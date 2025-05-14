@@ -10,7 +10,6 @@ upast_test = data['upast'] #N by u[k-15],u[k-14],...,u[k-1]
 thpast_test = data['thpast'] #N by y[k-15],y[k-14],...,y[k-1]
 # thpred = data['thnow'] #all zeros
 
-
 def create_IO_data(u,y,na,nb):
     X = []
     Y = []
