@@ -2,68 +2,96 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import torch
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Load CSV file
-data = pd.read_csv('./training-val-test-data.csv')
-X = data['# u']
-Y = data[' th']
+def create_IO_data(u,y,na,nb):
+    X = []
+    Y = []
+    for k in range(max(na,nb), len(y)):
+        X.append(np.concatenate([u[k-nb:k],y[k-na:k]]))
+        Y.append(y[k])
+    return np.array(X), np.array(Y)
 
-# First split: 60% training, 40% temporary (validation + test)
-Xtrain, Xtemp, Ytrain, Ytemp = train_test_split(X, Y, test_size=0.4, random_state=42)
+out = np.load('training-val-test-data.npz')
+th_train = out['th'] #th[0],th[1],th[2],th[3],...
+u_train = out['u'] #u[0],u[1],u[2],u[3],...
 
-# Second split: 50% of the temporary data for validation and test (20% each of original data)
-Xval, Xtest, Yval, Ytest = train_test_split(Xtemp, Ytemp, test_size=0.5, random_state=42)
-Xtrain, Xval, Xtest, Ytrain, Yval, Ytest = [torch.as_tensor(x.values).reshape(-1, 1) for x in [Xtrain, Xval, Xtest, Ytrain, Yval, Ytest]]
+data = np.load('hidden-test-prediction-submission-file.npz')
+upast_test = data['upast'] #N by u[k-15],u[k-14],...,u[k-1]
+thpast_test = data['thpast'] #N by y[k-15],y[k-14],...,y[k-1]
+print(thpast_test.shape)
 
-Xtrain = Xtrain.float()
-Ytrain = Ytrain.float()
-Xval = Xval.float()
-Yval = Yval.float()
-Xtest = Xtest.float()
-Ytest = Ytest.float()
+na = 5
+nb = 5
+Xtrain, Ytrain = create_IO_data(u_train, th_train, na, nb)
+
+Xtest = np.concatenate([upast_test[:,15-nb:], thpast_test[:,15-na:]],axis=1)
+
+from sklearn import linear_model
+reg = linear_model.LinearRegression()
+reg.fit(Xtrain,Ytrain)
+Ytrain_pred = reg.predict(Xtrain)
 
 from torch import nn
 import torch
-class Network(nn.Module): #a)
-    def __init__(self, n_in, n_hidden_nodes): #a)
-        super(Network,self).__init__() #a)
-        self.lay1 = nn.Linear(n_in,n_hidden_nodes).float() #a)
-        self.lay2 = nn.Linear(n_hidden_nodes,1).float() #a)
+class Network(nn.Module):
+    def __init__(self, n_in, n_hidden_nodes):
+        super(Network,self).__init__()
+        self.lay1 = nn.Linear(n_in,n_hidden_nodes).double()
+        self.lay2 = nn.Linear(n_hidden_nodes,1).double()
     
-    def forward(self,x): #a)
-        #x = concatenated [upast and ypast] #a)
-        x1 = torch.sigmoid(self.lay1(x)) #a)
-        y = self.lay2(x1)[:,0] #a)
-        return y #a)
+    def forward(self,x):
+        x1 = torch.sigmoid(self.lay1(x))
+        y = self.lay2(x1)[:,0]
+        return y
 
-n_hidden_nodes = 32 #a)
-epochs = 100 #a)
-model = Network(Xtrain.shape[1], n_hidden_nodes) #a=)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = model.to(device)
-Xtrain, Ytrain = Xtrain.to(device), Ytrain.to(device)
-Xval, Yval = Xval.to(device), Yval.to(device)
+n_hidden_nodes = 32
+epochs = 50
+model = Network(Xtrain.shape[1], n_hidden_nodes)
 train_loss_values = []
-val_loss_values = []
 
-optimizer = torch.optim.Adam(model.parameters()) #a)
-Xtrain, Xval, Ytrain, Yval = [torch.as_tensor(x) for x in [Xtrain, Xval, Ytrain, Yval]] #convert it to torch arrays #a)
-for epoch in range(epochs): #a)
-    Loss = torch.mean((model(Xtrain)-Ytrain)**2) #a)
-    optimizer.zero_grad() #a)
-    Loss.backward() #a)
-    optimizer.step() #a)
-    #if epoch%1000==0: #a) monitor
-    print(epoch,Loss.item()) #a)
-    train_loss_values.append(Loss.item())
+optimizer = torch.optim.Adam(model.parameters())
+Xtrain = torch.as_tensor(Xtrain)
+Ytrain = torch.as_tensor(Ytrain)
 
-    Loss = torch.mean((model(Xval)-Yval)**2)
-    val_loss_values.append(Loss.item())
+batch_size = 256  # or whatever fits your memory
+n_samples = Xtrain.shape[0]
+
+for epoch in range(epochs):
+
+    indices = torch.randperm(n_samples)
+
+    for start_idx in range(0, n_samples, batch_size):
+        end_idx = start_idx + batch_size
+        batch_idx = indices[start_idx:end_idx]
+
+        X_batch = Xtrain[batch_idx]
+        Y_batch = Ytrain[batch_idx]
+
+        # Forward pass
+        pred = model(X_batch)
+        loss = torch.mean((pred - Y_batch) ** 2)
+
+        # Backprop
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        train_loss = torch.mean((model(Xtrain) - Ytrain) ** 2).item()
+        #val_loss = torch.mean((model(Xval) - Yval) ** 2).item()
+        train_loss_values.append(train_loss)
+        #val_loss_values.append(val_loss)
+    
+    model.train()
+
+    if epoch % 100 == 0:
+        print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}")#, Val Loss = {val_loss:.4f}")
 
 torch.save(model.state_dict(), 'trained_model.pth')
 
 plt.plot(train_loss_values)
-plt.plot(val_loss_values)
-plt.legend(["Train Loss", "Validation Loss"])
+#plt.plot(val_loss_values)
+#plt.legend(["Train Loss", "Validation Loss"])
 plt.show()
