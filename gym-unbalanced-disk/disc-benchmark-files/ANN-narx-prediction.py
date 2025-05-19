@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn import linear_model
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,18 +20,14 @@ u_train = out['u'] #u[0],u[1],u[2],u[3],...
 data = np.load('hidden-test-prediction-submission-file.npz')
 upast_test = data['upast'] #N by u[k-15],u[k-14],...,u[k-1]
 thpast_test = data['thpast'] #N by y[k-15],y[k-14],...,y[k-1]
-print(thpast_test.shape)
 
 na = 5
 nb = 5
-Xtrain, Ytrain = create_IO_data(u_train, th_train, na, nb)
+X, Y = create_IO_data(u_train, th_train, na, nb)
+
+Xtrain, Xval, Ytrain, Yval = train_test_split(X, Y, test_size=0.2, random_state=42)
 
 Xtest = np.concatenate([upast_test[:,15-nb:], thpast_test[:,15-na:]],axis=1)
-
-from sklearn import linear_model
-reg = linear_model.LinearRegression()
-reg.fit(Xtrain,Ytrain)
-Ytrain_pred = reg.predict(Xtrain)
 
 from torch import nn
 import torch
@@ -46,13 +43,16 @@ class Network(nn.Module):
         return y
 
 n_hidden_nodes = 32
-epochs = 50
+epochs = 101
 model = Network(Xtrain.shape[1], n_hidden_nodes)
 train_loss_values = []
+val_loss_values = []
 
 optimizer = torch.optim.Adam(model.parameters())
 Xtrain = torch.as_tensor(Xtrain)
 Ytrain = torch.as_tensor(Ytrain)
+Xval = torch.as_tensor(Xval)
+Yval = torch.as_tensor(Yval)
 
 batch_size = 256  # or whatever fits your memory
 n_samples = Xtrain.shape[0]
@@ -80,18 +80,25 @@ for epoch in range(epochs):
     model.eval()
     with torch.no_grad():
         train_loss = torch.mean((model(Xtrain) - Ytrain) ** 2).item()
-        #val_loss = torch.mean((model(Xval) - Yval) ** 2).item()
+        val_loss = torch.mean((model(Xval) - Yval) ** 2).item()
         train_loss_values.append(train_loss)
-        #val_loss_values.append(val_loss)
+        val_loss_values.append(val_loss)
     
     model.train()
 
-    if epoch % 100 == 0:
-        print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}")#, Val Loss = {val_loss:.4f}")
+    if epoch % 10 == 0:
+        print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}")
 
 torch.save(model.state_dict(), 'trained_model.pth')
 
 plt.plot(train_loss_values)
-#plt.plot(val_loss_values)
-#plt.legend(["Train Loss", "Validation Loss"])
+plt.plot(val_loss_values)
+plt.legend(["train loss", "validation loss"])
 plt.show()
+
+Xtest_tensor = torch.as_tensor(Xtest).double()
+model.eval()
+with torch.no_grad():
+    Ypredict = model(Xtest_tensor).numpy()
+
+np.savez('hidden-test-prediction-ANN-submission-file.npz', upast=upast_test, thpast=thpast_test, thnow=Ypredict)
