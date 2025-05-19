@@ -17,17 +17,15 @@ out = np.load('training-val-test-data.npz')
 th_train = out['th'] #th[0],th[1],th[2],th[3],...
 u_train = out['u'] #u[0],u[1],u[2],u[3],...
 
-data = np.load('hidden-test-prediction-submission-file.npz')
-upast_test = data['upast'] #N by u[k-15],u[k-14],...,u[k-1]
-thpast_test = data['thpast'] #N by y[k-15],y[k-14],...,y[k-1]
+data = np.load('hidden-test-simulation-submission-file.npz')
+u_test = data['u']
+th_test = data['th'] #only the first 50 values are filled the rest are zeros
 
-na = 5
-nb = 5
+na = 2
+nb = 3
 X, Y = create_IO_data(u_train, th_train, na, nb)
 
 Xtrain, Xval, Ytrain, Yval = train_test_split(X, Y, test_size=0.2, random_state=42)
-
-Xtest = np.concatenate([upast_test[:,15-nb:], thpast_test[:,15-na:]],axis=1)
 
 from torch import nn
 import torch
@@ -43,7 +41,7 @@ class Network(nn.Module):
         return y
 
 n_hidden_nodes = 32
-epochs = 101
+epochs = 1001
 model = Network(Xtrain.shape[1], n_hidden_nodes)
 train_loss_values = []
 val_loss_values = []
@@ -89,16 +87,31 @@ for epoch in range(epochs):
     if epoch % 10 == 0:
         print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}")
 
-torch.save(model.state_dict(), 'trained_model_pred.pth')
+torch.save(model.state_dict(), 'trained_model_sim.pth')
 
 plt.plot(train_loss_values)
 plt.plot(val_loss_values)
 plt.legend(["train loss", "validation loss"])
 plt.show()
 
-Xtest_tensor = torch.as_tensor(Xtest).double()
-model.eval()
-with torch.no_grad():
-    Ypredict = model(Xtest_tensor).numpy()
+def simulation_IO_model(model, ulist, ylist, na, nb, skip=50):
+    upast = ulist[skip - nb:skip].tolist()
+    ypast = ylist[skip - na:skip].tolist()
+    Y = ylist[:skip].tolist()
+    
+    for u in ulist[skip:]:
+        x = np.concatenate([upast, ypast])[None, :]  # shape (1, na+nb)
+        x_tensor = torch.as_tensor(x).double()
+        with torch.no_grad():
+            ypred = model(x_tensor).item()
+        Y.append(ypred)
+        upast.append(u)
+        upast.pop(0)
+        ypast.append(ypred)
+        ypast.pop(0)
+    return np.array(Y)
 
-np.savez('hidden-test-prediction-ANN-submission-file.npz', upast=upast_test, thpast=thpast_test, thnow=Ypredict)
+skip = 50  # you already know the first 50 outputs
+th_test_sim = simulation_IO_model(model, u_test, th_test, na, nb, skip=skip)
+
+np.savez('hidden-test-simulation-ANN-submission-file.npz', th=th_test_sim, u=u_test)
