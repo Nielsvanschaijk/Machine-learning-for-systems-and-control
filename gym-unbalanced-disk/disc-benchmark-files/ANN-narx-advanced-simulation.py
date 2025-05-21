@@ -34,27 +34,23 @@ import torch.nn.functional as F
 class Network(nn.Module):
     def __init__(self, n_in):
         super(Network, self).__init__()
-        self.lay1 = nn.Linear(n_in, 64).double()
-        self.bn1 = nn.LayerNorm(64).double()
-        self.lay2 = nn.Linear(64, 32).double()
-        self.bn2 = nn.LayerNorm(32).double()
-        self.lay3 = nn.Linear(32, 16).double()
-        self.bn3 = nn.LayerNorm(16).double()
-        self.lay4 = nn.Linear(16, 1).double()
-
-        #self.dropout = nn.Dropout(p=0.1)  # You can increase p if overfitting
+        self.lay1 = nn.Linear(n_in, 32).double()
+        self.bn1 = nn.LayerNorm(32).double()
+        self.lay2 = nn.Linear(32, 16).double()
+        self.bn2 = nn.LayerNorm(16).double()
+        self.lay3 = nn.Linear(16, 1).double()
+        self.lay4 = nn.Linear(1, 1).double()  # one final layer with linear actuation since output is not equal to sigmoid output range
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.lay1(x)))
-        x = F.relu(self.bn2(self.lay2(x)))
-        x = F.relu(self.bn3(self.lay3(x)))
-        #x = self.dropout(F.relu(self.bn2(self.lay2(x))))
-        #x = self.dropout(F.relu(self.bn3(self.lay3(x))))
-        y = self.lay4(x).squeeze(-1)  # output shape: (batch_size,)
+        x = torch.sigmoid(self.bn1(self.lay1(x)))
+        x = torch.sigmoid(self.bn2(self.lay2(x)))
+        x = self.lay3(x)
+        y = self.lay4(x)
         return y
 
-epochs = 1001
+epochs = 101
 model = Network(Xtrain.shape[1])
+loss_fn = nn.MSELoss()
 train_loss_values = []
 val_loss_values = []
 
@@ -69,18 +65,20 @@ n_samples = Xtrain.shape[0]
 
 for epoch in range(epochs):
 
-    indices = torch.randperm(n_samples)
+    indices = torch.randperm(n_samples - batch_size)
 
-    for start_idx in range(0, n_samples, batch_size):
-        end_idx = start_idx + batch_size
-        batch_idx = indices[start_idx:end_idx]
+    #for start_idx in range(0, n_samples, batch_size):
+    for start_idx in range(0, batch_size):
+        #end_idx = start_idx + batch_size
+        #batch_idx = indices[start_idx:end_idx]
+        batch_idx = range(indices[start_idx], indices[start_idx] + batch_size)
 
         X_batch = Xtrain[batch_idx]
         Y_batch = Ytrain[batch_idx]
 
         # Forward pass
-        pred = model(X_batch)
-        loss = torch.mean((pred - Y_batch) ** 2)
+        pred = model(X_batch).squeeze(1)
+        loss = loss_fn(pred, Y_batch)
 
         # Backprop
         optimizer.zero_grad()
@@ -89,8 +87,8 @@ for epoch in range(epochs):
 
     model.eval()
     with torch.no_grad():
-        train_loss = torch.mean((model(Xtrain) - Ytrain) ** 2).item()
-        val_loss = torch.mean((model(Xval) - Yval) ** 2).item()
+        train_loss = loss_fn(model(Xtrain).squeeze(1), Ytrain)
+        val_loss = loss_fn(model(Xval).squeeze(1), Yval)
         train_loss_values.append(train_loss)
         val_loss_values.append(val_loss)
     
