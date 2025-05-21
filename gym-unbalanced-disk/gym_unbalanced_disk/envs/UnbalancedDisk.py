@@ -69,7 +69,7 @@ class UnbalancedDisk(gym.Env):
         ##### End do not edit   #####
 
         reward = self.reward_fun(self)
-        return self.get_obs(), reward, False, False, {}
+        return self.get_obs(), reward, False, False
          
     def reset(self,seed=None):
         self.th = np.random.normal(loc=0,scale=0.001)
