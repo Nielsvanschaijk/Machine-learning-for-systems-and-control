@@ -4,6 +4,7 @@ from gymnasium import spaces
 import numpy as np
 from scipy.integrate import solve_ivp
 from os import path
+from matplotlib import pyplot as plt
 # class gekopieerd van opdracht 6
 class Discretize_obs(gym.Wrapper):
     def __init__(self, env, nvec=10):
@@ -78,7 +79,7 @@ class UnbalancedDisk(gym.Env):
         high = [np.pi,40]
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
         # print(self.observation_space)
-        nvec = 100
+        nvec = 40 # was 100
         # self.observation_space = tuple(((self.observation_space - low)/(high - low)*nvec).astype(int))
         # self.reward_fun = lambda self: np.exp(-(self.th%(2*np.pi)-np.pi)**2/(2*(np.pi/7)**2)) #example reward function, change this!
         # self.reward_fun = lambda self: np.cos(self.th) - 0.01 * self.delta_th**2
@@ -300,43 +301,7 @@ def roll_mean(ar,start=2000,N=50):
         out[i] = k
     return out
 
-
-if __name__ == '__main__':
-    # import time
-    # env = UnbalancedDisk(dt=0.025)
-    # env = Discretize_obs(env, nvec=100)
-
-    # obs = env.reset()
-    # Y = [obs[0]]
-    # env.render()
-    # try:
-    #     for i in range(100):
-    #         # print("i", i)
-    #         time.sleep(1/24)
-    #         # u = 3
-    #         u = env.action_space.sample()
-    #         # print("u", u)
-    #         obs, reward, done, truncated, info = env.step(u)
-    #         # print("obs", obs)
-    #         Y.append(obs)
-    #         # print("Y", Y)
-    #         env.render()
-    # finally:
-    #     env.close()
-    from matplotlib import pyplot as plt
-    # import numpy as np
-    # # print("Y", len(Y), Y)
-    # Y = np.array(Y)
-    # undiscretizedY = []
-    # for item in Y[:,0]:
-    #     undiscretizedItem = approx_observation = -np.pi + (item + 0.5) * 2*np.pi / 100
-    #     undiscretizedY.append(undiscretizedItem)
-    # # plt.plot(Y[:,0])
-    # undiscretizedY = np.array(undiscretizedY)
-    # plt.plot(undiscretizedY)
-    # plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
-    # plt.show()
-
+def train():
     Qmats = {}
     for nvec in [40]: #c) # was 5,10,20,40,80
         max_episode_steps = 1000 #c) # was 1000
@@ -361,7 +326,50 @@ if __name__ == '__main__':
     plt.show()
 
     import pickle
-    with open("qmats.pkl", "wb") as f:
+    with open("qmatspython.pkl", "wb") as f:
         pickle.dump(Qmats, f)
+import pickle
+if __name__ == '__main__':
+    # train()
+    with open("qmats.pkl", "rb") as f:
+        Qmats = pickle.load(f)
+    import time
+    env = UnbalancedDisk(dt=0.025)
+    env = Discretize_obs(env, nvec=40) # was 100
+    Qmat = Qmats[40]
+
+    obs = env.reset()
+    Y = [obs[0]]
+    env.render()
+    try:
+        for i in range(100):
+            # print("i", i)
+            time.sleep(1/24)
+            # u = 3
+            u = env.action_space.sample()
+            # u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
+            # print("u", u)
+            obs, reward, done, truncated, info = env.step(u)
+            # print("obs", obs)
+            Y.append(obs)
+            # print("Y", Y)
+            env.render()
+    finally:
+        env.close()
+    
+    import numpy as np
+    # print("Y", len(Y), Y)
+    Y = np.array(Y)
+    undiscretizedY = []
+    for item in Y[:,0]:
+        undiscretizedItem = approx_observation = -np.pi + (item + 0.5) * 2*np.pi / 100
+        undiscretizedY.append(undiscretizedItem)
+    # plt.plot(Y[:,0])
+    undiscretizedY = np.array(undiscretizedY)
+    plt.plot(undiscretizedY)
+    plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
+    plt.show()
+
+    
     
 
