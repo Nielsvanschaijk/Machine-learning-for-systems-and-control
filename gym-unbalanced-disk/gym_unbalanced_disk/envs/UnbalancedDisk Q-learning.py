@@ -81,7 +81,8 @@ class UnbalancedDisk(gym.Env):
         nvec = 100
         # self.observation_space = tuple(((self.observation_space - low)/(high - low)*nvec).astype(int))
         # self.reward_fun = lambda self: np.exp(-(self.th%(2*np.pi)-np.pi)**2/(2*(np.pi/7)**2)) #example reward function, change this!
-        self.reward_fun = lambda self: 1 if self.th <= 1 else 0
+        # self.reward_fun = lambda self: np.cos(self.th) - 0.01 * self.delta_th**2
+        self.reward_fun = lambda self: abs(self.th)
         self.render_mode = render_mode
         self.viewer = None
         self.u = 0 #for visual
@@ -104,9 +105,12 @@ class UnbalancedDisk(gym.Env):
         sol = solve_ivp(f,[0,self.dt],[self.th,self.omega]) #integration
         self.th, self.omega = sol.y[:,-1]
         ##### End do not edit   #####
-
+        terminated = abs(self.th % (2 * np.pi) - np.pi) > 0.9 #and abs(self.omega) < 0.
         reward = self.reward_fun(self)
-        return self.get_obs(), reward, False, False, {}
+        if terminated:
+            # print("terminated")
+            reward += 10
+        return self.get_obs(), reward, terminated, False, [self.th, self.omega]
          
     def reset(self,seed=None, options=None):
         self.th = np.random.normal(loc=0,scale=0.001)
@@ -229,7 +233,7 @@ def argmax(a):
 
 
 
-def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.99):
+def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.5,eps=0.2, gamma=0.99): # was alpha = 0.2
     from collections import defaultdict
     Qmat = defaultdict(float) #any new argument set to zero
     env_time = env
@@ -238,6 +242,8 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.99):
         env_time = env_time.env
     ep_lengths = []
     ep_lengths_steps = []
+    rewards = []
+    omegas = []
     
     obs, info = env.reset()
     print('goal reached time:')
@@ -249,12 +255,15 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.99):
             action = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
 
         obs_new, reward, terminated, truncated, info = env.step(action)
-
+        # print("reward", reward, "   info", info)
+        rewards.append(reward)
+        omegas.append(info[1])
         if terminated: #terminal state and not by timeout
             #saving results:
             print(env_time._elapsed_steps, end=' ')
             ep_lengths.append(env_time._elapsed_steps)
             ep_lengths_steps.append(z)
+            # print("terminated") # verwijderen
             
             #updating Qmat:
             A = reward - Qmat[obs,action] # adventage or TD
@@ -275,7 +284,7 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.99):
                 obs, info = env.reset()
     print()
     
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths)
+    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas]
 
 
 
@@ -329,18 +338,27 @@ if __name__ == '__main__':
     # plt.show()
 
     Qmats = {}
-    for nvec in [5,10,20,40,80]: #c)
-        max_episode_steps = 1000 #c)
+    for nvec in [40]: #c) # was 5,10,20,40,80
+        max_episode_steps = 1000 #c) # was 1000
         env = UnbalancedDisk(dt=0.025)
         env = gym.wrappers.TimeLimit(env,max_episode_steps=max_episode_steps) 
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec=',nvec) #c)
-        Qmat, ep_lengths_steps, ep_lengths = Qlearn(env, nsteps=400_000, callbackfeq=5000) #c=) # was 400_000
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=50_000, callbackfeq=5000) #c=) # was 400_000
+        rewards = info[0]
+        omegas = info[1]
+        # print("omegas", omegas)
         plt.plot(ep_lengths_steps,roll_mean(ep_lengths,start=max_episode_steps),label=str(nvec)) #c)
         Qmats[nvec] = Qmat #save
     plt.legend() #c)
     plt.show() #c)
+    plt.plot(rewards)
+    # plt.plot(omegas)
+    # plt.legend("rewards", "omegas")
+    plt.show()
+    plt.plot(omegas)
+    plt.show()
 
     import pickle
     with open("qmats.pkl", "wb") as f:
