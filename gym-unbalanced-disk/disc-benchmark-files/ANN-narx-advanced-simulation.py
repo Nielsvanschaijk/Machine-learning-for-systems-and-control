@@ -21,8 +21,8 @@ data = np.load('hidden-test-simulation-submission-file.npz')
 u_test = data['u']
 th_test = data['th'] #only the first 50 values are filled the rest are zeros
 
-na = 2
-nb = 3
+na = 8
+nb = 8
 X, Y = create_IO_data(u_train, th_train, na, nb)
 
 Xtrain, Xval, Ytrain, Yval = train_test_split(X, Y, test_size=0.2, random_state=42)
@@ -32,14 +32,15 @@ import torch
 import torch.nn.functional as F
 
 class Network(nn.Module):
-    def __init__(self, n_in):
+    def __init__(self, input_size):
         super(Network, self).__init__()
-        self.lay1 = nn.Linear(n_in, 32).double()
+        # Feedforward layers
+        self.lay1 = nn.Linear(input_size, 32).double()
         self.bn1 = nn.LayerNorm(32).double()
         self.lay2 = nn.Linear(32, 16).double()
         self.bn2 = nn.LayerNorm(16).double()
         self.lay3 = nn.Linear(16, 1).double()
-        self.lay4 = nn.Linear(1, 1).double()  # one final layer with linear actuation since output is not equal to sigmoid output range
+        self.lay4 = nn.Linear(1, 1).double()
 
     def forward(self, x):
         x = torch.sigmoid(self.bn1(self.lay1(x)))
@@ -48,7 +49,7 @@ class Network(nn.Module):
         y = self.lay4(x)
         return y
 
-epochs = 101
+epochs = 1001
 model = Network(Xtrain.shape[1])
 loss_fn = nn.MSELoss()
 train_loss_values = []
@@ -60,7 +61,7 @@ Ytrain = torch.as_tensor(Ytrain)
 Xval = torch.as_tensor(Xval)
 Yval = torch.as_tensor(Yval)
 
-batch_size = 512  # or whatever fits your memory
+batch_size = 64  # or whatever fits your memory
 n_samples = Xtrain.shape[0]
 
 for epoch in range(epochs):
@@ -77,8 +78,8 @@ for epoch in range(epochs):
         Y_batch = Ytrain[batch_idx]
 
         # Forward pass
-        pred = model(X_batch).squeeze(1)
-        loss = loss_fn(pred, Y_batch)
+        pred = model(X_batch)
+        loss = loss_fn(pred.reshape(-1), Y_batch)
 
         # Backprop
         optimizer.zero_grad()
@@ -87,8 +88,8 @@ for epoch in range(epochs):
 
     model.eval()
     with torch.no_grad():
-        train_loss = loss_fn(model(Xtrain).squeeze(1), Ytrain)
-        val_loss = loss_fn(model(Xval).squeeze(1), Yval)
+        train_loss = loss_fn(model(Xtrain).reshape(-1), Ytrain)
+        val_loss = loss_fn(model(Xval).reshape(-1), Yval)
         train_loss_values.append(train_loss)
         val_loss_values.append(val_loss)
     
