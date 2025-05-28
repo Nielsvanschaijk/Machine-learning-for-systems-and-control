@@ -338,16 +338,17 @@ if __name__ == '__main__':
     env = Discretize_obs(env, nvec=40) # was 100
     Qmat = Qmats[40]
 
-    obs = env.reset()
-    Y = [obs[0]]
+    obs, info = env.reset()
+    print('obs', obs)
+    Y = [obs]
     env.render()
     try:
         for i in range(100):
             # print("i", i)
             time.sleep(1/24)
             # u = 3
-            u = env.action_space.sample()
-            # u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
+            # u = env.action_space.sample()
+            u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
             # print("u", u)
             obs, reward, done, truncated, info = env.step(u)
             # print("obs", obs)
@@ -358,7 +359,7 @@ if __name__ == '__main__':
         env.close()
     
     import numpy as np
-    # print("Y", len(Y), Y)
+    print("Y", len(Y), Y)
     Y = np.array(Y)
     undiscretizedY = []
     for item in Y[:,0]:
