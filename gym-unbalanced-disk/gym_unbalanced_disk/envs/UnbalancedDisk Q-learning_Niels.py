@@ -33,7 +33,6 @@ class Discretize_obs(gym.Wrapper):
     def reset(self):
         obs, info = self.env.reset()
         obs_dis = self.discretize(obs)  #b=)
-        self.prev_costh = [0, 0, 0, 0, 0]
         return obs_dis, info
 
 
@@ -66,7 +65,6 @@ class UnbalancedDisk(gym.Env):
 
         self.umax = umax
         self.dt = dt #time step
-        self.prev_costh = [0, 0, 0, 0, 0]
  
 
         # change anything here (compilable with the exercise instructions)
@@ -82,22 +80,10 @@ class UnbalancedDisk(gym.Env):
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
         # print(self.observation_space)
         nvec = nvec # was 100
-        # self.observation_space = tuple(((self.observation_space - low)/(high - low)*nvec).astype(int))
-        # self.reward_fun = lambda self: np.exp(-(self.th%(2*np.pi)-np.pi)**2/(2*(np.pi/3)**2))# 4 was 7# - 0.01 * self.delta_th**2 #example reward function, change this!
-        
-        # self.reward_fun = lambda self: 10000 if self.costh > 1.9 and np.abs(self.delta_th) < 0.5 else \
-        #                                 500 - 25 * np.abs(self.delta_th) if self.costh > 1.9  else \
-        #                                 250 + 200 * self.costh + 50 * np.abs(self.delta_th) if self.costh > 1 else \
-        #                                 150 * np.abs(self.delta_th) +  50 * self.costh # was 500 - 25
-        # 75 * np.abs(self.delta_th) +  100 * self.costh # gaat naar 700
-        # 150 50 naar 600
-        self.reward_fun = lambda self: 10000 if self.costh > 1.9 and np.abs(self.delta_th) < 0.5 else \
-                                        500 - 25 * np.abs(self.delta_th) if self.costh > 1.9  else \
-                                        250 + 50 * np.abs(self.delta_th) if self.costh > 1 else \
-                                        150 * np.abs(self.delta_th)  # naar 500 op 2,8 miljoen
-        
-        # self.reward_fun = lambda self: 10000 if abs(self.th) > 3 and self.delta_th < 5 else \
-                                        # 100 * abs(self.th) + 5 * max(self.delta_th, 0)
+
+        self.reward_fun = lambda self: 10000 if self.costh > 0.9 and np.abs(self.delta_th) < 0.1 else \
+                                        100 - 5 * np.abs(self.delta_th) if self.costh > 0.9  else \
+                                        75 * np.abs(self.delta_th) + 100 * self.costh 
         self.render_mode = render_mode
         self.viewer = None
         self.u = 0 #for visual
@@ -123,12 +109,12 @@ class UnbalancedDisk(gym.Env):
         self.costh = -np.cos(th) + 1
         ##### End do not edit   #####
         
-        terminated = abs(self.costh) > 1.95 and abs(self.delta_th) < 0.1 #and all(x > 1.95 for x in self.prev_costh)# > 0.9 and abs(self.omega) < 1
+        terminated = abs(self.costh) > 0.95 and abs(self.delta_th) < 0.1 # > 0.9 and abs(self.omega) < 1
         reward = self.reward_fun(self)
         # print("self.th", self.th, reward)
         if terminated:
             # print("terminated")
-            reward += 100000
+            reward += 10
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
          
     def reset(self,seed=None, options=None):
@@ -136,7 +122,6 @@ class UnbalancedDisk(gym.Env):
         self.omega = np.random.normal(loc=0,scale=0.001)
         self.u = 0
         self.delta_th = 0
-        self.prev_costh = [0, 0, 0, 0, 0]
         
         return self.get_obs(), {}
 
@@ -257,7 +242,6 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.9): # w
     actions = []
     thetas = []
     delta_ths = []
-    lr = []
     obs, info = env.reset()
     print('goal reached time:')
     for z in range(nsteps):
@@ -273,7 +257,6 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.9): # w
         thetas.append(info[0])
         omegas.append(info[1])
         delta_ths.append(info[2])
-        lr.append(eps)
         if terminated: #terminal state and not by timeout
             #saving results:
             print(env_time._elapsed_steps, end=' ')
@@ -298,10 +281,9 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.9): # w
                 
                 #reset:
                 obs, info = env.reset()
-        eps = max(0.2, 0.9999 * eps) # 0,15 is minimal, decaying epsilon value
     print()
     
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths, lr]
+    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths]
 
 
 
@@ -319,8 +301,6 @@ def roll_mean(ar,start=2000,N=50):
 
 def train():
     Qmats = {}
-    fig, ax1 = plt.subplots()
-    ax2 = ax1.twinx()
     for nvec in [10]:#, 20]:#, 40, 80, ]: #c) # was 5,10,20,40,80
         max_episode_steps = 1000 #c) # was 1000
         env = UnbalancedDisk(nvec=nvec, dt=0.025)
@@ -328,24 +308,18 @@ def train():
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec=',nvec) #c)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=1000_000, callbackfeq=5000, eps=0.7) #c=) # was 400_000
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=200_000, callbackfeq=5000) #c=) # was 400_000
         rewards = info[0]
         omegas = info[1]
         actions = info[2]
         thetas = info[3]
         delta_ths = info[4]
-        lr = info[5]
         # print("omegas", omegas)
-        plt.subplot(2,1,1)
         plt.plot(ep_lengths_steps,roll_mean(ep_lengths,start=max_episode_steps),label=str(nvec)) #c)
         Qmats[nvec] = Qmat #save
-        plt.subplot(2,1,2)
-        plt.plot(lr, label="eps")
     plt.legend() #c)
-    plt.ylabel('mean episode length')
-    plt.xlabel('steps')
     plt.show() #c)
-    # plt.plot(rewards)
+    plt.plot(rewards)
     # plt.plot(omegas)
     # plt.legend("rewards", "omegas")
     # plt.show()
@@ -355,13 +329,13 @@ def train():
     # plt.plot(actions)
     # plt.show()
     # print(max(np.abs(thetas)))
-    # plt.plot(thetas)
+    plt.plot(thetas)
     
     # plt.plot(delta_ths)
     # plt.plot(rewards)
     # plt.hlines(y=[0.1, 0.2, 0.3], xmin=0, xmax=100000)
     # plt.legend(["thetas", "delta_ths", "rewards"])
-    # plt.show()
+    plt.show()
     # plt.plot(rewards)
     # plt.show()
     # print(rewards)
