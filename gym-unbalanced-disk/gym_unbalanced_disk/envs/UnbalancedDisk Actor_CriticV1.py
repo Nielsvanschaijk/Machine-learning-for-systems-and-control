@@ -67,6 +67,15 @@ class Discretize_obs(gym.Wrapper):
 
 class UnbalancedDisk(gym.Env):
     def __init__(self, nvec=40, umax=3., dt=0.025, render_mode='human'):
+        '''
+        UnbalancedDisk
+        th =            
+                    +-pi
+                        |
+            pi/2   ----- -pi/2
+                        |
+                        0  = starting location
+        '''
         # Initialize environment parameters
         self.omega0 = 11.339846957335382
         self.delta_th = 0
@@ -86,23 +95,19 @@ class UnbalancedDisk(gym.Env):
             1000 * np.cos(self.th - np.pi)
 
             # Reward for being upright for a long time
-            + 10 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
-            
-            # Reward for swing amplitude: high when |th| is large (upside)
-            + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
-            
-            # Reward fast motion near bottom to encourage energy build-up
-            + 0.5 * (1 - np.cos(self.th)) * abs(self.omega)
-            
-            # Penalize control effort
-            - 0.001 * self.u**2
+            + 50 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
 
-            # Penalize no swing angle at the bottom
-            - 0.1 * abs(self.delta_th) if abs(self.delta_th) < np.pi/2 else 0
+            # 2. Energy build-up at bottom (encourage fast motion at base)
+            + 1 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
 
-            # Pelanize large swing angle at the top
-            - 50 * abs(self.omega) if abs(self.delta_th) >= np.pi-0.1415 else 0
+            # 3. Penalize standing still at bottom (inaction)
+            - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
 
+            # 4. Penalize control effort
+            - 0.01 * (self.u**2)
+
+            # 5. Penalize high velocity at top
+            - 100 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
         )
 
         self.render_mode = render_mode
@@ -213,15 +218,18 @@ class UnbalancedDisk(gym.Env):
             self.viewer = None
 
 
-# Training function using Actor-Critic
-def train_actor_critic(env, actor_crit, n_episodes=5000, gamma=0.99, tau=1e-3):
+def train_actor_critic(env, actor_crit, n_episodes=1000, gamma=0.995, tau=1e-3,
+                       initial_epsilon=1.0, final_epsilon=0.05, epsilon_decay=0.995):
     optimizer = optim.Adam(actor_crit.parameters(), lr=1e-3)
+    epsilon = initial_epsilon
 
     for episode in range(n_episodes):
-        print(f"Starting Episode {episode + 1}/{n_episodes}")  # Debug print
+        print(f"Starting Episode {episode + 1}/{n_episodes} (ε={epsilon:.3f})")
 
-        states, actions, rewards, next_states, dones = rollout(actor_crit, env, N_rollout=50)
+        # Pass epsilon to rollout
+        states, actions, rewards, next_states, dones = rollout(actor_crit, env, N_rollout=50, epsilon=epsilon)
 
+        # Training steps...
         states = torch.tensor(states, dtype=torch.float32)
         actions = torch.tensor(actions, dtype=torch.long)
         rewards = torch.tensor(rewards, dtype=torch.float32)
@@ -245,45 +253,39 @@ def train_actor_critic(env, actor_crit, n_episodes=5000, gamma=0.99, tau=1e-3):
         total_loss.backward()
         optimizer.step()
 
+        # Decay epsilon (clipped to final_epsilon)
+        epsilon = max(final_epsilon, epsilon * epsilon_decay)
+
         if episode % 100 == 0:
             print(f"Episode {episode}, Total Loss: {total_loss.item()}")
 
-    print(f"Training completed for {n_episodes} episodes.")  # Debug print at the end
 
-
-
-# Rollout function (to collect data)
-def rollout(actor_crit, env, N_rollout=100, epsilon=0.999):
+def rollout(actor_crit, env, N_rollout=250, epsilon=0.999):
     states, actions, rewards, next_states, dones = [], [], [], [], []
     obs, info = env.reset()
 
     for _ in range(N_rollout):
-        # Get the action probabilities from the actor network
         probs = actor_crit.actor(torch.tensor(obs, dtype=torch.float32)[None, :])[0].detach().numpy()
 
-        # Epsilon-greedy action selection
+        # Epsilon-greedy action
         if np.random.rand() < epsilon:
-            # With probability epsilon, choose a random action
             action = np.random.choice(env.action_space.n)
         else:
-            # Otherwise, select the action with the highest probability
             action = np.argmax(probs)
 
         states.append(obs)
         actions.append(action)
 
-        # Take a step in the environment
         obs_next, reward, terminated, truncated, info = env.step(action)
-
         rewards.append(reward)
         next_states.append(obs_next)
         dones.append(terminated or truncated)
+        epsilon = max(0.05, epsilon * epsilon)
 
         if terminated or truncated:
             obs, info = env.reset()
         else:
             obs = obs_next
-        epsilon *= 0.999  # Decay epsilon
 
     return np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones)
 
