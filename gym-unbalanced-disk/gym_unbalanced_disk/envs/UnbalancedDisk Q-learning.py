@@ -5,6 +5,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from os import path
 import pickle
+import pickle
 from matplotlib import pyplot as plt
 # class gekopieerd van opdracht 6
 class Discretize_obs(gym.Wrapper):
@@ -308,7 +309,7 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
         eps = max(0.05, eps * 0.999) 
     print()
     
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths]
+    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths, lr]
 
 def roll_mean(ar,start=2000,N=50):
     s = 1-1/N
