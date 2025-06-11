@@ -1,10 +1,11 @@
-
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from scipy.integrate import solve_ivp
 from os import path
 import pickle
+import torch.nn as nn
+import torch
 from matplotlib import pyplot as plt
 # class gekopieerd van opdracht 6
 class Discretize_obs(gym.Wrapper):
@@ -252,64 +253,38 @@ def argmax(a):
 
 
 
-def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9): # was alpha = 0.2 eps 0.2 gamma = 0.99
-    from collections import defaultdict
-    Qmat = defaultdict(float) #any new argument set to zero
-    env_time = env
-    # env_time = env.unwrapped
-    while not isinstance(env_time,gym.wrappers.TimeLimit):
-        env_time = env_time.env
-    ep_lengths = []
-    ep_lengths_steps = []
-    rewards = []
-    omegas = []
-    actions = []
-    thetas = []
-    delta_ths = []
-    obs, info = env.reset()
-    print('goal reached time:')
-    for z in range(nsteps):
+class ActorCritic(nn.Module):
+    def __init__(self, env, hidden_size=40):
+        super(ActorCritic, self).__init__()
+        num_inputs = env.observation_space.shape[0]
+        num_actions = env.action_space.n
 
-        if np.random.uniform()<eps:
-            action = env.action_space.sample()
-        else:
-            action = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
-        actions.append(action)
-        obs_new, reward, terminated, truncated, info = env.step(action)
-        # print("reward", reward, "   info", info)
-        rewards.append(reward)
-        thetas.append(info[0])
-        omegas.append(info[1])
-        delta_ths.append(info[2])
-        if terminated: #terminal state and not by timeout
-            #saving results:
-            print(env_time._elapsed_steps, end=' ')
-            ep_lengths.append(env_time._elapsed_steps)
-            ep_lengths_steps.append(z)
-            # print("terminated") # verwijderen
-            
-            #updating Qmat:
-            A = reward - Qmat[obs,action] # adventage or TD
-            Qmat[obs,action] += alpha*A
-            obs, info = env.reset()
-        else: #not terminal
-            A = reward + gamma*max(Qmat[obs_new, action_next] for action_next in range(env.action_space.n)) - Qmat[obs,action]
-            Qmat[obs,action] += alpha*A
-            obs = obs_new
-            
-            if truncated: #terminal by truncation with timeout
-                #saving results:
-                ep_lengths.append(env_time._elapsed_steps)
-                ep_lengths_steps.append(z)
-                print('out', end=' ')
-                
-                #reset:
-                obs, info = env.reset()
-        eps = max(0.05, eps * 0.999) 
-    print()
+        #define your layers here:
+        self.critic_linear1 = nn.Linear(num_inputs, hidden_size)  #a)
+        self.critic_linear2 = nn.Linear(hidden_size, 1) #a)
+        self.actor_linear1 = nn.Linear(num_inputs, hidden_size) #a)
+        self.actor_linear2 = nn.Linear(hidden_size, num_actions) #a)
     
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths]
-
+    def actor(self, state, return_logp=False):
+        #state has shape (Nbatch, Nobs)
+        hidden = torch.tanh(self.actor_linear1(state)) #a)
+        h = self.actor_linear2(hidden) #a=)
+        h = h - torch.max(h,dim=1,keepdim=True)[0] #for additional numerical stability
+        logp = h - torch.log(torch.sum(torch.exp(h),dim=1,keepdim=True)) #log of the softmax
+        if return_logp:
+            return logp
+        else:
+            return torch.exp(logp) #by default it will return the probability
+    
+    def critic(self, state):
+        #state has shape (Nbatch, Nobs)
+        hidden = torch.tanh(self.critic_linear1(state)) #a)
+        return self.critic_linear2(hidden)[:,0] #a) #no activation function
+    
+    def forward(self, state):
+        #state has shape (Nbatch, Nobs)
+        return self.critic(state), self.actor(state)
+    
 def roll_mean(ar,start=2000,N=50):
     s = 1-1/N
     k = start
