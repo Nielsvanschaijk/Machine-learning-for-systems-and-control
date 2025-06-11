@@ -4,7 +4,6 @@ from gymnasium import spaces
 import numpy as np
 from scipy.integrate import solve_ivp
 from os import path
-import pickle
 from matplotlib import pyplot as plt
 # class gekopieerd van opdracht 6
 class Discretize_obs(gym.Wrapper):
@@ -34,11 +33,19 @@ class Discretize_obs(gym.Wrapper):
     def reset(self):
         obs, info = self.env.reset()
         obs_dis = self.discretize(obs)  #b=)
-        self.prev_costh = [0, 0, 0, 0, 0]
         return obs_dis, info
 
 
 class UnbalancedDisk(gym.Env):
+    '''
+    UnbalancedDisk
+    th =            
+                  +-pi
+                    |
+           pi/2   ----- -pi/2
+                    |
+                    0  = starting location
+    '''
     def __init__(self,nvec=40, umax=3., dt = 0.025, render_mode='human'):
         ############# start do not edit  ################
         self.omega0 = 11.339846957335382
@@ -58,7 +65,6 @@ class UnbalancedDisk(gym.Env):
 
         self.umax = umax
         self.dt = dt #time step
-        self.prev_costh = [0, 0, 0, 0, 0]
  
 
         # change anything here (compilable with the exercise instructions)
@@ -74,49 +80,68 @@ class UnbalancedDisk(gym.Env):
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
         # print(self.observation_space)
         nvec = nvec # was 100
-
-        self.reward_fun = lambda self: 10000 if self.costh > 0.9 and np.abs(self.delta_th) < 0.1 else \
-                                        100 - 5 * np.abs(self.delta_th) if self.costh > 0.9  else \
-                                        75 * np.abs(self.delta_th) + 100 * self.costh 
+        # self.observation_space = tuple(((self.observation_space - low)/(high - low)*nvec).astype(int))
+        # self.reward_fun = lambda self: np.exp(-(self.th%(2*np.pi)-np.pi)**2/(2*(np.pi/3)**2))# 4 was 7# - 0.01 * self.delta_th**2 #example reward function, change this!
+        
+        # self.reward_fun = lambda self: 10000 if self.costh > 1.9 and np.abs(self.delta_th) < 0.5 else \
+        #                                 500 - 25 * np.abs(self.delta_th) if self.costh > 1.9  else \
+        #                                 250 + 200 * self.costh + 50 * np.abs(self.delta_th) if self.costh > 1 else \
+        #                                 150 * np.abs(self.delta_th) +  50 * self.costh # was 500 - 25
+        # 75 * np.abs(self.delta_th) +  100 * self.costh # gaat naar 700
+        # 150 50 naar 600
+        self.reward_fun = lambda self: 10000 if self.costh > 1.9 and np.abs(self.delta_th) < 0.5 else \
+                                        500 - 25 * np.abs(self.delta_th) if self.costh > 1.9  else \
+                                        250 + 50 * np.abs(self.delta_th) if self.costh > 1 else \
+                                        150 * np.abs(self.delta_th)  # naar 500 op 2,8 miljoen
+        
+        # self.reward_fun = lambda self: 10000 if abs(self.th) > 3 and self.delta_th < 5 else \
+                                        # 100 * abs(self.th) + 5 * max(self.delta_th, 0)
         self.render_mode = render_mode
         self.viewer = None
         self.u = 0 #for visual
         self.reset()
 
     def step(self, action):
-        self.u = [-3, -1, 0, 1, 3][action]
-        self.u = np.clip(self.u, -self.umax, self.umax)
-
-        def f(t, y):
+        #convert action to u
+        # self.u = action #continuous
+        self.u = [-3,-1,0,1, 3][action]# wasself.u = [-3,-1,0,1,3][action] #discrate
+        # self.u = [-3,3][action] #discrate
+        # self.u=0
+        ##### Start Do not edit ######
+        self.u = np.clip(self.u,-self.umax,self.umax)
+        def f(t,y):
             th, omega = y
             dthdt = omega
-            friction = self.gamma * omega + self.Fc * np.tanh(omega / self.coulomb_omega)
-            domegadt = -self.omega0**2 * np.sin(th + self.delta_th) - friction + self.Ku * self.u
+            friction = self.gamma*omega + self.Fc*np.tanh(omega/self.coulomb_omega)
+            domegadt = -self.omega0**2*np.sin(th+self.delta_th) - friction + self.Ku*self.u
             return np.array([dthdt, domegadt])
-
-        sol = solve_ivp(f, [0, self.dt], [self.th, self.omega])
-        th, self.omega = sol.y[:, -1]
+        sol = solve_ivp(f,[0,self.dt],[self.th,self.omega]) #integration
+        
+        th, self.omega = sol.y[:,-1]
+        
         self.delta_th = np.arctan2(np.sin(th - self.th), np.cos(th - self.th))
         self.th = th
         self.costh = -np.cos(th) + 1
+        # print(th)
+        # if th > np.pi:
+        #     print("te groot", th, th%(2*np.pi))
+        # self.th, self.omega = sol.y[:,-1]
+        # print(self.th)
         ##### End do not edit   #####
         
-        terminated = abs(self.costh) > 0.95 and abs(self.delta_th) < 0.1 # > 0.9 and abs(self.omega) < 1
+        terminated = abs(self.costh) > 1.95 and abs(self.delta_th) < 0.1# > 0.9 and abs(self.omega) < 1
         reward = self.reward_fun(self)
-
-        terminated = abs(np.arctan2(np.sin(self.th - np.pi), np.cos(self.th - np.pi))) < 0.1 and abs(self.omega) < 0.5
+        # print("self.th", self.th, reward)
         if terminated:
             # print("terminated")
             reward += 10
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
-
          
     def reset(self,seed=None, options=None):
         self.th = np.random.normal(loc=0,scale=0.001)
         self.omega = np.random.normal(loc=0,scale=0.001)
         self.u = 0
         self.delta_th = 0
-        self.prev_costh = [0, 0, 0, 0, 0]
         
         return self.get_obs(), {}
 
@@ -283,6 +308,11 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.9): # w
     
     return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths, lr]
 
+
+
+
+
+
 def roll_mean(ar,start=2000,N=50):
     s = 1-1/N
     k = start
@@ -294,25 +324,33 @@ def roll_mean(ar,start=2000,N=50):
 
 def train():
     Qmats = {}
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
     for nvec in [10]:#, 20]:#, 40, 80, ]: #c) # was 5,10,20,40,80
         max_episode_steps = 1000 #c) # was 1000
         env = UnbalancedDisk(nvec=nvec, dt=0.025)
-        env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
+        env = gym.wrappers.TimeLimit(env,max_episode_steps=max_episode_steps) 
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec=',nvec) #c)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=200_000, callbackfeq=5000) #c=) # was 400_000
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5000_000, callbackfeq=5000, eps=0.7) #c=) # was 400_000
         rewards = info[0]
         omegas = info[1]
         actions = info[2]
         thetas = info[3]
         delta_ths = info[4]
+        lr = info[5]
         # print("omegas", omegas)
+        plt.subplot(2,1,1)
         plt.plot(ep_lengths_steps,roll_mean(ep_lengths,start=max_episode_steps),label=str(nvec)) #c)
         Qmats[nvec] = Qmat #save
+        plt.subplot(2,1,2)
+        plt.plot(lr, label="eps")
     plt.legend() #c)
+    plt.ylabel('mean episode length')
+    plt.xlabel('steps')
     plt.show() #c)
-    plt.plot(rewards)
+    # plt.plot(rewards)
     # plt.plot(omegas)
     # plt.legend("rewards", "omegas")
     # plt.show()
@@ -322,13 +360,13 @@ def train():
     # plt.plot(actions)
     # plt.show()
     # print(max(np.abs(thetas)))
-    plt.plot(thetas)
+    # plt.plot(thetas)
     
     # plt.plot(delta_ths)
     # plt.plot(rewards)
     # plt.hlines(y=[0.1, 0.2, 0.3], xmin=0, xmax=100000)
     # plt.legend(["thetas", "delta_ths", "rewards"])
-    plt.show()
+    # plt.show()
     # plt.plot(rewards)
     # plt.show()
     # print(rewards)
@@ -338,7 +376,7 @@ def train():
         pickle.dump(Qmats, f)
 
 def run_simulation():
-    with open("qmats.pkl", "rb") as f:
+    with open("qmatspython.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDisk(dt=0.025)
@@ -378,14 +416,11 @@ def run_simulation():
     plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
     plt.show()
 
+import pickle
 if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
-    parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
-    args = parser.parse_args()
-
-    #train()
-
+    # train()
     run_simulation()
+
+    
+    
+
