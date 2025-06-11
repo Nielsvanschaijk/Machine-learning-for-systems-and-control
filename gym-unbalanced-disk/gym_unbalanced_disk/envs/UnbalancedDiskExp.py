@@ -104,7 +104,7 @@ class UnbalancedDisk_exp(gym.Env):
         reward = self.reward_fun(self)
         return obs, reward, False, False, {}
         
-    def reset(self,seed=None):
+    def reset(self,seed=None, options=None):
         theta_now = self.get_obs()[0]
         t_start = time.time()
         while time.time()-t_start<30:

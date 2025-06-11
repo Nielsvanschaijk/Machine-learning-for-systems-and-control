@@ -6,6 +6,11 @@ from scipy.integrate import solve_ivp
 from os import path
 import pickle
 from matplotlib import pyplot as plt
+import gym_unbalanced_disk
+import UnbalancedDiskExp
+import gymnasium
+import numpy as np
+from matplotlib import pyplot as plt
 # class gekopieerd van opdracht 6
 class Discretize_obs(gym.Wrapper):
     def __init__(self, env, nvec=10):
@@ -18,7 +23,9 @@ class Discretize_obs(gym.Wrapper):
         
         self.observation_space = gym.spaces.MultiDiscrete(self.nvec)#([self.nvec, self.nvec]) #b)
         self.olow, self.ohigh = np.array([-np.pi,-40]), np.array([np.pi,40])
-
+        self.action_space = spaces.Box(low=-3.0,high=3.0,shape=tuple()) #continuous
+        
+        self.action_space = spaces.Discrete(7)#7) #discrete
     def discretize(self,observation): #b)
         # print("observation", type(observation))
         # print("olow", type(self.olow), np.array(self.olow))
@@ -277,10 +284,10 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
         actions.append(action)
         obs_new, reward, terminated, truncated, info = env.step(action)
         # print("reward", reward, "   info", info)
-        rewards.append(reward)
-        thetas.append(info[0])
-        omegas.append(info[1])
-        delta_ths.append(info[2])
+        # rewards.append(reward)
+        # thetas.append(info[0])
+        # omegas.append(info[1])
+        # delta_ths.append(info[2])
         if terminated: #terminal state and not by timeout
             #saving results:
             print(env_time._elapsed_steps, end=' ')
@@ -308,7 +315,7 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
         eps = max(0.05, eps * 0.999) 
     print()
     
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths]
+    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), []
 
 def roll_mean(ar,start=2000,N=50):
     s = 1-1/N
@@ -323,22 +330,22 @@ def train():
     Qmats = {}
     for nvec in [10]:
         max_episode_steps = 300
-        env = UnbalancedDisk(nvec=nvec, dt=0.025)
+        env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
         env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=1_000_000, callbackfeq=5000)
-        rewards, omegas, actions, thetas, delta_ths = info
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=10_000, callbackfeq=5000)
+        # rewards, omegas, actions, thetas, delta_ths = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
         Qmats[nvec] = Qmat
 
     plt.legend()
     plt.show()
-    plt.plot(rewards)
-    plt.plot(thetas)
-    plt.show()
+    # plt.plot(rewards)
+    # plt.plot(thetas)
+    # plt.show()
 
     with open("qmats.pkl", "wb") as f:
         pickle.dump(Qmats, f)
@@ -350,7 +357,8 @@ def run_simulation():
     with open("qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
-    env = UnbalancedDisk(dt=0.025)
+    env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
+    # env = UnbalancedDiskExp(umax = 3.0,dt = 0.025)
     env = Discretize_obs(env, nvec=10) # was 100
     Qmat = Qmats[10]
 
@@ -394,5 +402,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    # train()
+    train()
     run_simulation()
