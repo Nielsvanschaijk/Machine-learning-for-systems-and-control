@@ -21,7 +21,8 @@ A disable driver signature enforcement:
 8) Click on Restart.
 9) Wait while the PC restarts and gets to the Startup settings page. 
 10) Enter the bitlocker code noted down in step 3 if asked for.
-11) Then press key 7 to select "7) Disable driver signature enforcement".
+11) Then press key 7 to 
+ "7) Disable driver signature enforcement".
 12) Login again and locate the WindowsDcscUSB folder with the drivers. (cannot be contained in a zip)
 13) Open the Start Menu, type "device manager" and start it.
 14) Right-click on the name of the setup (sometimes just called Unknown device) 
