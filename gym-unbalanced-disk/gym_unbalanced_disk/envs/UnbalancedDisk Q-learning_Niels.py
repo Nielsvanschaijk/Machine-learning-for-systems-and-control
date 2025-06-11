@@ -62,7 +62,7 @@ class UnbalancedDisk(gym.Env):
         # change anything here (compilable with the exercise instructions)
         self.action_space = spaces.Box(low=-umax,high=umax,shape=tuple()) #continuous
         
-        self.action_space = spaces.Discrete(5)#5) #discrete
+        self.action_space = spaces.Discrete(7)#7) #discrete
         # print(self.action_space)
         # low = [-float('inf'),-40] 
         # high = [float('inf'),40]
@@ -83,17 +83,28 @@ class UnbalancedDisk(gym.Env):
         '''
         self.reward_fun = lambda self: (
             # Big reward for being upright
-            10 * np.cos(self.th - np.pi)
+            1000 * np.cos(self.th - np.pi)
+
+            # Reward for being upright for a long time
+            + 10 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
             
             # Reward for swing amplitude: high when |th| is large (upside)
-            + 2 * abs(np.sin(self.th / 2))  # peaks at th=±π
+            + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
             
             # Reward fast motion near bottom to encourage energy build-up
             + 0.5 * (1 - np.cos(self.th)) * abs(self.omega)
             
             # Penalize control effort
             - 0.001 * self.u**2
+
+            # Penalize no swing angle at the bottom
+            - 0.1 * abs(self.delta_th) if abs(self.delta_th) < np.pi/2 else 0
+
+            # Pelanize large swing angle at the top
+            - 50 * abs(self.omega) if abs(self.delta_th) >= np.pi-0.1415 else 0
+
         )
+        # self.reward_fun = lambda self: np.exp(-self.th)
 
         #                                100*(1-np.abs(self.costh)) if abs(self.costh) < np.pi
         #self.reward_fun = lambda self: 10000 if self.costh > 0.9 and np.abs(self.delta_th) > 0.1 else \
@@ -105,7 +116,7 @@ class UnbalancedDisk(gym.Env):
         self.reset()
 
     def step(self, action):
-        self.u = [-3, -1, 0, 1, 3][action]
+        self.u = [-3, -1, -0.5, 0, 0.5, 1, 3][action]
         self.u = np.clip(self.u, -self.umax, self.umax)
 
         def f(t, y):
@@ -122,8 +133,8 @@ class UnbalancedDisk(gym.Env):
         self.costh = -np.cos(th)
 
         reward = self.reward_fun(self)
-
-        terminated = abs(np.arctan2(np.sin(self.th - np.pi), np.cos(self.th - np.pi))) < 0.1 and abs(self.omega) < 0.5
+        terminated = False
+        #terminated = abs(np.arctan2(np.sin(self.th - np.pi), np.cos(self.th - np.pi))) < 0.05 and abs(self.omega) < 0.1
         if terminated:
             reward += 1000.0
 
@@ -241,7 +252,7 @@ def argmax(a):
 
 
 
-def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.9): # was alpha = 0.2 eps 0.2 gamma = 0.99
+def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9): # was alpha = 0.2 eps 0.2 gamma = 0.99
     from collections import defaultdict
     Qmat = defaultdict(float) #any new argument set to zero
     env_time = env
@@ -294,6 +305,7 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.2,eps=0.2, gamma=0.9): # w
                 
                 #reset:
                 obs, info = env.reset()
+        eps = max(0.05, eps * 0.999) 
     print()
     
     return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths]
@@ -309,14 +321,14 @@ def roll_mean(ar,start=2000,N=50):
 
 def train():
     Qmats = {}
-    for nvec in [10]:  # You can add more values like 20, 40 if desired
-        max_episode_steps = 500
+    for nvec in [10]:
+        max_episode_steps = 300
         env = UnbalancedDisk(nvec=nvec, dt=0.025)
         env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=100_000, callbackfeq=5000)
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5_000_000, callbackfeq=5000)
         rewards, omegas, actions, thetas, delta_ths = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
@@ -382,7 +394,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-
     #train()
-
     run_simulation()
