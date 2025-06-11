@@ -86,7 +86,7 @@ class UnbalancedDisk(gym.Env):
             1000 * np.cos(self.th - np.pi)
 
             # Reward for being upright for a long time
-            + 10 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
             
             # Reward for swing amplitude: high when |th| is large (upside)
             + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
@@ -328,7 +328,7 @@ def train():
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5_000_000, callbackfeq=5000)
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=1_000_000, callbackfeq=5000)
         rewards, omegas, actions, thetas, delta_ths = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
@@ -394,5 +394,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    #train()
+    train()
     run_simulation()
