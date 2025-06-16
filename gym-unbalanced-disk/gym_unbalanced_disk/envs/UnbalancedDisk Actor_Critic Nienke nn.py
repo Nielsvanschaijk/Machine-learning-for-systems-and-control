@@ -86,36 +86,11 @@ class UnbalancedDisk(gym.Env):
             # - 0.1 * abs(self.omega) if abs(self.omega) < np.pi/2 else 0 # now swimg bottom
             # + 20 * np.exp(-(self.th**2) / 0.7) * abs(self.omega) # speed
             # + 5 * (np.cos(self.th)) * abs(self.omega) 
-            # + 1000 if abs(self.th) > 0.5 * np.pi else 0
-            + 10000 if abs(self.th) > 3.05 else 0
-            + 50 * np.exp(- (self.th - np.pi)**2 / (2 * 0.5**2))
-            # + 100000 * np.exp(- (self.th - np.pi)**2 / (2 * 0.3**2))
-            + 10000 * np.exp(- (self.th - np.pi)**2 / (2 * 0.5**2))
-            + 100 * np.exp(- (self.th - np.pi)**2 / (2 * 0.7**2))
-            # + 10 * np.exp(- (self.th - np.pi)**2 / (2 * 1**2))
-            + 20 * np.cos(self.th - np.pi) # height was 20
-            # + 3 * abs(self.omega)
-            # + 3 * abs(self.omega) * np.exp(- (self.th - np.pi)**2 / (2 * 0.8**2))
-            # + 0.02 * np.exp(- (self.th)**2 / (2 * 0.1**2)) * abs(self.omega) # was 0.02 chat
-            + 1 * abs(np.sin(self.th / 2)) # toegevoegd chat was 1
-            # + 10 * abs(np.sin(self.th / 2))  # peaks at th=±π verwijderd chat
-            # + 0.01 * (1 - np.cos(self.th)) * abs(self.omega) # net verwijdered
-            # - 0.01 * np.exp(- (abs(self.th) - 1.0)**2 / (2 * 0.1**2))
-            # + 0.3 * np.exp(- ((self.th + np.pi / 2) ** 2) / (2 * 0.4**2)) * abs(self.omega) 
-            # + 10 * np.exp(- ((self.th + np.pi / 2) ** 2) / (2 * 0.4**2)) * abs(self.omega) # high velocity -90 degrees
-            # + 5 *  np.exp(- (self.th ** 2) / (2 * 0.1 ** 2)) * abs(self.omega)
-            # +  5 * (1 - np.cos(self.th)) * abs(self.omega)
-            # + 20 * np.cos(self.th - np.pi) if np.cos(self.th - np.pi) >= 0 else 0
-            # + np.exp(- (self.th ** 2) / (2 * 0.1 ** 2)) * abs(self.omega) # high velocity at bottom
-            # + np.exp(- (self.th)**2 / (2 * 0.2**2)) # high swing at bottom
-            # + 0.1 * abs(1 - abs(np.sin(self.th / 2))) * self.omega
-            # + 100 * abs(np.sin(self.th / 2))
-
-            # + (50 * (np.cos(self.th - np.pi)+1))**2
-            # + 10 * abs(self.omega)**2 if abs(np.sin(self.th / 2)) < 0.2 else 0
-            # + 0.5 * (1 - np.cos(self.th)) * abs(self.omega)
+            # + 75 * np.cos(self.th - np.pi) # height
+            + 20 * np.cos(self.th - np.pi)
+            + abs(self.omega)**2
             #  # Reward for swing amplitude: high when |th| is large (upside)
-            # + 25 * abs(np.sin(self.th / 2))  # peaks at th=±π
+            + 15 * abs(np.sin(self.th / 2))  # peaks at th=±π
             # + 5 * (1 - np.cos(self.th)) * abs(self.omega) # fast bottom
             # + 5 if abs(self.th) < 0.2 and abs(self.u) == 3 else 0
 
@@ -169,11 +144,8 @@ class UnbalancedDisk(gym.Env):
         # reward = self.P(self)
         reward = self.reward_fun(self)
         # terminated = False
-        # terminated = np.abs(self.th) > 3.05 and np.abs(self.omega) < 0.1
-        # terminated = False
-        terminated = np.abs(self.th) > 3.05
-        if terminated:
-            print(terminated)
+        terminated = np.abs(self.th) > 3.05 and np.abs(self.omega) < 0.1
+        terminated = False
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
 
     def reset(self, seed=None, options=None):
@@ -259,19 +231,83 @@ class UnbalancedDisk(gym.Env):
             self.isopen = False
             self.viewer = None
 
+class ActorCritic(nn.Module):
+    def __init__(self, env, hidden_size=40):
+        super(ActorCritic, self).__init__()
+        print(env.observation_space)
+        num_inputs = 20
+        num_actions = env.action_space.n
 
-def eval_actor(Actor,env, obs_start, deterministic=True):
-    actions = np.arange(env.action_space.n,dtype=int)
-    reward_acc = 0
-    obs, info = env.reset()
-    while True:
-        action = np.argmax(Actor[obs]) if deterministic else np.random.choice(actions,p=softmax(Actor[obs_start]))
-        obs, reward, terminated, truncated, info = env.step(action)
-        reward_acc += reward
-        if terminated or truncated:
-            env.reset()
-            return reward_acc
+        #define your layers here:
+        self.critic_linear1 = nn.Linear(num_inputs, hidden_size)  #a)
+        self.critic_linear2 = nn.Linear(hidden_size, 1) #a)
+        self.actor_linear1 = nn.Linear(num_inputs, hidden_size) #a)
+        self.actor_linear2 = nn.Linear(hidden_size, num_actions) #a)
     
+    def actor(self, state, return_logp=False):
+        #state has shape (Nbatch, Nobs)
+        hidden = torch.tanh(self.actor_linear1(state)) #a)
+        h = self.actor_linear2(hidden) #a=)
+        h = h - torch.max(h,dim=1,keepdim=True)[0] #for additional numerical stability
+        logp = h - torch.log(torch.sum(torch.exp(h),dim=1,keepdim=True)) #log of the softmax
+        if return_logp:
+            return logp
+        else:
+            return torch.exp(logp) #by default it will return the probability
+    
+    def critic(self, state):
+        #state has shape (Nbatch, Nobs)
+        hidden = torch.tanh(self.critic_linear1(state)) #a)
+        return self.critic_linear2(hidden)[:,0] #a) #no activation function
+    
+    def forward(self, state):
+        #state has shape (Nbatch, Nobs)
+        return self.critic(state), self.actor(state)
+
+def rollout(actor_crit, env, N_rollout=10_000): 
+    #save the following (use .append)
+    Start_state = [] #hold an array of (x_t)
+    Actions = [] #hold an array of (u_t)
+    Rewards = [] #hold an array of (r_{t+1})
+    End_state = [] #hold an array of (x_{t+1})
+    Terminal = [] #hold an array of (terminal_{t+1})
+    pi = lambda x: actor_crit.actor(torch.tensor(x[None,:],dtype=torch.float32))[0].numpy()
+    with torch.no_grad():
+        obs, info = env.reset() 
+        for i in range(N_rollout): 
+            action = np.random.choice(env.action_space.n,p=pi(obs)) #b=)
+
+            Start_state.append(obs) 
+            Actions.append(action)
+
+            obs_next, reward, terminated, truncated, info = env.step(action)
+
+            Terminal.append(terminated)
+            Rewards.append(reward) 
+            End_state.append(obs_next) 
+
+            if terminated or truncated: 
+                obs, info = env.reset() 
+            else:
+                obs = obs_next
+                
+    #error checking:
+    assert len(Start_state)==len(Actions)==len(Rewards)==len(End_state)==len(Terminal), f'error in lengths: {len(Start_state)}=={len(Actions)}=={len(Rewards)}=={len(End_state)}=={len(Terminal)}'
+    return np.array(Start_state), np.array(Actions), np.array(Rewards), np.array(End_state), np.array(Terminal).astype(int)
+
+def eval_actor(actor_crit, env):
+    
+    with torch.no_grad():
+        rewards_acc = 0 
+        pi = lambda x: actor_crit.actor(torch.tensor(x[None,:],dtype=torch.float32))[0].numpy()
+        obs, info = env.reset() 
+        while True: 
+            action = np.argmax(pi(obs)) #b=)
+            obs, reward, terminated, truncated, info = env.step(action)
+            rewards_acc += reward 
+            if terminated or truncated: 
+                return rewards_acc 
+
 def softmax(h):
     hp = h-np.max(h)
     return np.exp(hp)/np.sum(np.exp(hp))
@@ -284,87 +320,94 @@ def train_actor_critic(env, nvec=10):
     Actor = np.zeros((nvec, nvec, env.action_space.n)) #a=) #array of size (N states, N actions)
     Critic = np.zeros((nvec, nvec)) #a=) array of size (N states,)
     actions = np.arange(env.action_space.n,dtype=int)
-
-    obs_start, info = env.reset()
-    step_size_actor = 0.5
-    min_step_size_actor = 0.1
-    step_size_critic = 0.7
-    min_step_size_critic = 0.3
-    gamma = 0.98
-    rewards = []
-    index = []
-    it = 0
-    for i in tqdm(range(400_000)):
-        #take action
-        probs = softmax(Actor[obs_start]) #b=)
-        action = np.random.choice(actions,p=probs) #b=)
+    actor_crit = ActorCritic(env, hidden_size=40)
+    Start_state, Actions, Rewards, End_state, Terminal = rollout(actor_crit,env,N_rollout=20)
+    # obs_start, info = env.reset()
+    # step_size_actor = 0.5
+    # min_step_size_actor = 0.1
+    
+    # step_size_critic = 0.7
+    # min_step_size_critic = 0.3
+    # gamma = 0.98
+    # rewards = []
+    # index = []
+    # it = 0
+    # for i in tqdm(range(400_000)):
+    #     #take action
+    #     probs = softmax(Actor[obs_start]) #b=)
+    #     action = np.random.choice(actions,p=probs) #b=)
         
-        obs_next, reward, terminated, truncated, info = env.step(action)
-        # print("reward", reward)
-        if terminated:
-            returns = reward #b)
-        else:
-            returns = reward+gamma*Critic[obs_next] #b)
+    #     obs_next, reward, terminated, truncated, info = env.step(action)
+    #     # print("reward", reward)
+    #     if terminated:
+    #         returns = reward #b)
+    #     else:
+    #         returns = reward+gamma*Critic[obs_next] #b)
         
-        advantage = (returns-Critic[obs_start]) #b=)
+    #     advantage = (returns-Critic[obs_start]) #b=)
         
-        tmp = np.zeros((env.action_space.n,)) #c)
-        tmp[action] = 1 #c)
-        grad_actor = (tmp-probs)*advantage #c)  
-        grad_critic = -advantage #c) 
+    #     tmp = np.zeros((env.action_space.n,)) #c)
+    #     tmp[action] = 1 #c)
+    #     grad_actor = (tmp-probs)*advantage #c)  
+    #     grad_critic = -advantage #c) 
         
-        Actor[obs_start] += step_size_actor*grad_actor #c)
-        Critic[obs_start] -= step_size_critic*grad_critic #c)
+    #     Actor[obs_start] += step_size_actor*grad_actor #c)
+    #     Critic[obs_start] -= step_size_critic*grad_critic #c)
         
-        step_size_actor = 0.9999 * step_size_actor
-        step_size_actor = max(step_size_actor, min_step_size_actor)
-        step_size_critic = 0.9999 * step_size_critic
-        step_size_critic = max(step_size_critic, min_step_size_critic)
-        if terminated or truncated:
-            # print("terminated")
-            it += 1
-            # if it%100==0:
-            #     rewards.append(np.mean([eval_actor(Actor,env, obs_start) for i in range(200)]))
-            #     index.append(i)
-            obs_start, info = env.reset()
-        else:
-            obs_start = obs_next
-    plt.plot(index,rewards,'.')
-    plt.xlabel('update count')
-    plt.ylabel('mean episode reward')
-    plt.show()
-    np.save('actor_policy.npy', Actor)
+    #     step_size_actor = 0.9999 * step_size_actor
+    #     step_size_actor = max(step_size_actor, min_step_size_actor)
+    #     step_size_critic = 0.9999 * step_size_critic
+    #     step_size_critic = max(step_size_critic, min_step_size_critic)
+    #     if terminated or truncated:
+    #         # print("terminated")
+    #         it += 1
+    #         # if it%100==0:
+    #         #     rewards.append(np.mean([eval_actor(Actor,env, obs_start) for i in range(200)]))
+    #         #     index.append(i)
+    #         obs_start, info = env.reset()
+    #     else:
+    #         obs_start = obs_next
+    # plt.plot(index,rewards,'.')
+    # plt.xlabel('update count')
+    # plt.ylabel('mean episode reward')
+    # plt.show()
+    # np.save('actor_policy.npy', Actor)
 
 
 
 # Run simulation (visualize the policy)
-def show_self(env):
-    Actor = np.load('actor_policy.npy')
-    obs, info = env.reset()
-    env.render()
-    while True:
-        time.sleep(1/24)
-        action = np.argmax(Actor[obs]) #e=)
-        obs, reward, terminated, truncated, info = env.step(action)
-        env.render()
-        if terminated or truncated:
+def show_self(actor_crit, env):
+    pi = lambda x: actor_crit.actor(torch.tensor(x[None,:],dtype=torch.float32))[0].numpy()
+    with torch.no_grad():
+        try:
+            obs, info = env.reset()
+            env.render()
+
+            while True:
+                time.sleep(1/24)
+                action = np.argmax(pi(obs)) #e=)
+                obs, reward, terminated, truncated, info = env.step(action)
+                env.render()
+                if terminated or truncated:
+                    # env.close()
+                    break
+        finally:
             env.close()
-            break
 
 if __name__ == '__main__':
     env_name = 'UnbalancedDisk'
     env = UnbalancedDisk()
     env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
-    env = Discretize_obs(env, nvec=40)
+    env = Discretize_obs(env, nvec=20)
     # actor_crit = ActorCritic(env)
     # actor_crit = ActorCritic(env)
 
     # Train the Actor-Critic model
     # train_actor_critic(env, actor_crit)
-    train_actor_critic(env, nvec=40)
+    train_actor_critic(env, nvec=20)
     env = UnbalancedDisk()
-    env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
-    env = Discretize_obs(env, nvec=40)
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=200) 
+    env = Discretize_obs(env, nvec=20)
 
     # Show the trained policy
     show_self(env)
