@@ -8,7 +8,7 @@ from scipy.integrate import solve_ivp
 import time
 from matplotlib import pyplot as plt
 from os import path
-
+from stable_baselines3 import PPO, A2C, SAC
 
 # Define the Actor-Critic Network
 
@@ -183,7 +183,7 @@ class UnbalancedDisk(gym.Env):
             print("jaaa")
         if terminated:
             print(terminated)
-        return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
+        return self.get_obs(), reward, terminated, False, {}
 
     def reset(self, seed=None, options=None):
         self.th = np.random.normal(loc=0, scale=0.001)
@@ -290,62 +290,9 @@ def softmax(h):
                     #    initial_epsilon=1.0, final_epsilon=0.05, epsilon_decay=0.995):
 
 from tqdm.auto import tqdm
-def train_actor_critic(env, nvec=10):
-    Actor = np.zeros((nvec, nvec, env.action_space.n)) #a=) #array of size (N states, N actions)
-    Critic = np.zeros((nvec, nvec)) #a=) array of size (N states,)
-    actions = np.arange(env.action_space.n,dtype=int)
-
-    obs_start, info = env.reset()
-    step_size_actor = 0.1 # 0.5
-    min_step_size_actor = 0.1
-    step_size_critic = 0.3 #0.7
-    min_step_size_critic = 0.3
-    gamma = 0.8
-    rewards = []
-    index = []
-    it = 0
-    for i in tqdm(range(400_000)):
-        #take action
-        probs = softmax(Actor[obs_start]) #b=)
-        action = np.random.choice(actions,p=probs) #b=)
-        
-        obs_next, reward, terminated, truncated, info = env.step(action)
-        # print("reward", reward)
-        # print(obs_next)
-        # obs_next = tuple(np.array(obs_next) % np.array(nvec))
-        if terminated:
-            returns = reward #b)
-        else:
-            returns = reward+gamma*Critic[obs_next] #b)
-        
-        advantage = (returns-Critic[obs_start]) #b=)
-        
-        tmp = np.zeros((env.action_space.n,)) #c)
-        tmp[action] = 1 #c)
-        grad_actor = (tmp-probs)*advantage #c)  
-        grad_critic = -advantage #c) 
-        
-        Actor[obs_start] += step_size_actor*grad_actor #c)
-        Critic[obs_start] -= step_size_critic*grad_critic #c)
-        
-        step_size_actor = 0.9999 * step_size_actor
-        step_size_actor = max(step_size_actor, min_step_size_actor)
-        step_size_critic = 0.9999 * step_size_critic
-        step_size_critic = max(step_size_critic, min_step_size_critic)
-        if terminated or truncated:
-            # print("terminated")
-            it += 1
-            # if it%100==0:
-            #     rewards.append(np.mean([eval_actor(Actor,env, obs_start) for i in range(200)]))
-            #     index.append(i)
-            obs_start, info = env.reset()
-        else:
-            obs_start = obs_next
-    plt.plot(index,rewards,'.')
-    plt.xlabel('update count')
-    plt.ylabel('mean episode reward')
-    plt.show()
-    np.save('actor_policy.npy', Actor)
+def train_actor_critic(env, nvec=10, model=None):
+    model.learn(total_timesteps=25000)
+    
 
 
 
@@ -356,7 +303,7 @@ def show_self(env):
     env.render()
     while True:
         time.sleep(1/24)
-        action = np.argmax(Actor[obs]) #e=)
+        action, _states = model.predict(obs)
         obs, reward, terminated, truncated, info = env.step(action)
         env.render()
         if terminated or truncated:
@@ -367,13 +314,14 @@ if __name__ == '__main__':
     env_name = 'UnbalancedDisk'
     env = UnbalancedDisk()
     env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
-    env = Discretize_obs(env, nvec=40)
+    # env = Discretize_obs(env, nvec=40)
     # actor_crit = ActorCritic(env)
     # actor_crit = ActorCritic(env)
 
     # Train the Actor-Critic model
     # train_actor_critic(env, actor_crit)
-    train_actor_critic(env, nvec=40)
+    model = A2C('MlpPolicy', env, verbose=1)
+    train_actor_critic(env, nvec=40, model=model)
     env = UnbalancedDisk()
     env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
     env = Discretize_obs(env, nvec=40)
