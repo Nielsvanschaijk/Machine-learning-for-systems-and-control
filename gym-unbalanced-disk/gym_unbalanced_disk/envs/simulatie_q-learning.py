@@ -335,7 +335,7 @@ def train():
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=10_000, callbackfeq=5000)
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5_000, callbackfeq=5000)
         # rewards, omegas, actions, thetas, delta_ths = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
