@@ -124,7 +124,7 @@ class UnbalancedDisk(gym.Env):
             # 1000 * np.cos(self.th - np.pi)
 
             # Reward for being upright for a long time
-            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            + 300 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
 
             # 2. Energy build-up at bottom (encourage fast motion at base)
             + 25 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
@@ -136,7 +136,7 @@ class UnbalancedDisk(gym.Env):
             - 0.001 * (self.u**2)
 
             # 5. Penalize high velocity at top
-            - 100 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
+            - 300 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
 
             # 6. Reward for reaching higher position
             + 100 * np.sin(self.th)
@@ -170,7 +170,7 @@ class UnbalancedDisk(gym.Env):
         sol = solve_ivp(f, [0, self.dt], [self.th, self.omega])
         th, self.omega = sol.y[:, -1]
         self.delta_th = np.arctan2(np.sin(th - self.th), np.cos(th - self.th))
-        self.th = th
+        self.th = (th + np.pi) % (2 * np.pi) - np.pi
         self.costh = -np.cos(th)
         self.x = np.array([self.th, self.omega])
 
@@ -186,6 +186,7 @@ class UnbalancedDisk(gym.Env):
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
 
     def reset(self, seed=None, options=None):
+        np.random.seed(42)
         self.th = np.random.normal(loc=0, scale=0.001)
         self.omega = np.random.normal(loc=0, scale=0.001)
         self.x = np.array([self.th, self.omega])
@@ -305,14 +306,15 @@ def train_actor_critic(env, nvec=10, Actor=None, Critic=None):
     actions = np.arange(env.action_space.n, dtype=int)
     obs_start, info = env.reset()
     step_size_actor = 0.5
-    min_step_size_actor = 0.1
+    min_step_size_actor = 0.01
     step_size_critic = 0.7
-    min_step_size_critic = 0.3
+    min_step_size_critic = 0.03
     gamma = 0.98
     rewards = []
     index = []
     it = 0
-    for i in tqdm(range(500_000)):
+    highest_actor_score = -10000000
+    for i in tqdm(range(100_000)):
         #take action
         probs = softmax(Actor[obs_start]) #b=)
         action = np.random.choice(actions,p=probs) #b=)
@@ -339,6 +341,12 @@ def train_actor_critic(env, nvec=10, Actor=None, Critic=None):
 
         step_size_actor = max(0.9999 * step_size_actor, min_step_size_actor)
         step_size_critic = max(0.9999 * step_size_critic, min_step_size_critic)
+
+        if reward > highest_actor_score:
+            highest_actor_score = reward
+            np.save('actor_policy_highest.npy', Actor)
+            np.save('critic_values_highest.npy', Critic)
+
 
         if terminated or truncated:
             it += 1
@@ -369,7 +377,7 @@ def show_self(env):
 
 if __name__ == '__main__':
     env = UnbalancedDisk()
-    env = gym.wrappers.TimeLimit(env, max_episode_steps=1000)
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=300)
     env = Discretize_obs(env, nvec=40)
 
     train_actor_critic(env, nvec=40)  # This will now resume training if data exists

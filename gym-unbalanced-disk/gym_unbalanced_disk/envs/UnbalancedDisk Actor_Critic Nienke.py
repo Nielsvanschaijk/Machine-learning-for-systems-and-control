@@ -87,17 +87,17 @@ class UnbalancedDisk(gym.Env):
             # + 20 * np.exp(-(self.th**2) / 0.7) * abs(self.omega) # speed
             # + 5 * (np.cos(self.th)) * abs(self.omega) 
             # + 1000 if abs(self.th) > 0.5 * np.pi else 0
-            + 10000 if abs(self.th) > 3.05 else 0
-            + 50 * np.exp(- (self.th - np.pi)**2 / (2 * 0.5**2))
+            ##+ 10000 if abs(self.th) > 3.05 else 0
+            ##+ 50 * np.exp(- (self.th - np.pi)**2 / (2 * 0.5**2))
             # + 100000 * np.exp(- (self.th - np.pi)**2 / (2 * 0.3**2))
-            + 10000 * np.exp(- (self.th - np.pi)**2 / (2 * 0.5**2))
-            + 100 * np.exp(- (self.th - np.pi)**2 / (2 * 0.7**2))
+            ##+ 10000 * np.exp(- (self.th - np.pi)**2 / (2 * 0.5**2))
+            ##+ 100 * np.exp(- (self.th - np.pi)**2 / (2 * 0.7**2))
             # + 10 * np.exp(- (self.th - np.pi)**2 / (2 * 1**2))
-            + 20 * np.cos(self.th - np.pi) # height was 20
+            ##+ 20 * np.cos(self.th - np.pi) # height was 20
             # + 3 * abs(self.omega)
             # + 3 * abs(self.omega) * np.exp(- (self.th - np.pi)**2 / (2 * 0.8**2))
             # + 0.02 * np.exp(- (self.th)**2 / (2 * 0.1**2)) * abs(self.omega) # was 0.02 chat
-            + 1 * abs(np.sin(self.th / 2)) # toegevoegd chat was 1
+            ##+ 1 * abs(np.sin(self.th / 2)) # toegevoegd chat was 1
             # + 10 * abs(np.sin(self.th / 2))  # peaks at th=±π verwijderd chat
             # + 0.01 * (1 - np.cos(self.th)) * abs(self.omega) # net verwijdered
             # - 0.01 * np.exp(- (abs(self.th) - 1.0)**2 / (2 * 0.1**2))
@@ -122,19 +122,25 @@ class UnbalancedDisk(gym.Env):
             # 1000 * np.cos(self.th - np.pi)
 
             # Reward for being upright for a long time
-            # + 50 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
 
             # 2. Energy build-up at bottom (encourage fast motion at base)
-            #  2 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
+            + 25 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
 
             # 3. Penalize standing still at bottom (inaction)
-            # - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
+            - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
 
             # 4. Penalize control effort
-            # - 0.01 * (self.u**2)
+            - 0.001 * (self.u**2)
 
             # 5. Penalize high velocity at top
-            # - 100 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
+            - 300 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
+
+            # 6. Reward for reaching higher position
+            + 100 * np.sin(self.th)
+
+            # 7. Penalize jitteriness in control effort
+            - 10 * abs(self.u_last-self.u)
         )
         self.x = np.array([self.th, self.omega])
         self.r_matrix = np.array([[5, 0], [0, 0.1]])
@@ -147,6 +153,7 @@ class UnbalancedDisk(gym.Env):
         self.reset()
 
     def step(self, action):
+        self.u_last = self.u
 
         self.u = [-3, -1, -0.5, 0, 0.5, 1, 3][action]
         self.u = np.clip(self.u, -self.umax, self.umax)
@@ -177,6 +184,7 @@ class UnbalancedDisk(gym.Env):
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
 
     def reset(self, seed=None, options=None):
+        np.random.seed(42)
         self.th = np.random.normal(loc=0, scale=0.001)
         self.omega = np.random.normal(loc=0, scale=0.001)
         self.x = np.array([self.th, self.omega])
@@ -294,7 +302,7 @@ def train_actor_critic(env, nvec=10):
     rewards = []
     index = []
     it = 0
-    for i in tqdm(range(400_000)):
+    for i in tqdm(range(100_000)):
         #take action
         probs = softmax(Actor[obs_start]) #b=)
         action = np.random.choice(actions,p=probs) #b=)
