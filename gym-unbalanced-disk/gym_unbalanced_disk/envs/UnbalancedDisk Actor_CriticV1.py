@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 # Define the Actor-Critic Network
 class ActorCritic(nn.Module):
-    def __init__(self, env, hidden_size=40):
+    def __init__(self, env, hidden_size=256):
         super(ActorCritic, self).__init__()
         num_inputs = env.observation_space.shape[0]
         num_actions = env.action_space.n
@@ -23,7 +23,7 @@ class ActorCritic(nn.Module):
         self.actor_linear2 = nn.Linear(hidden_size, num_actions)
     
     def actor(self, state, return_logp=False):
-        hidden = torch.tanh(self.actor_linear1(state))
+        hidden = torch.relu(self.actor_linear1(state))
         h = self.actor_linear2(hidden)
         
         # Use log_softmax instead of manually computing log probabilities
@@ -86,36 +86,34 @@ class UnbalancedDisk(gym.Env):
 
         self.umax = umax
         self.dt = dt
-        self.action_space = gym.spaces.Discrete(7)
+        self.action_space = gym.spaces.Discrete(5)
         self.observation_space = gym.spaces.Box(low=np.array([-np.pi, -40], dtype=np.float32),
                                                  high=np.array([np.pi, 40], dtype=np.float32), shape=(2,))
 
         self.reward_fun = lambda self: (
-            # Big reward for being upright
-            1000 * np.cos(self.th - np.pi)
+            # Position reward
+            1 * abs(self.costh) 
 
-            # Reward for being upright for a long time
-            + 50 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            # Swing motion at the bottom
+            #100 * abs(self.omega) #if abs(self.th) <= 0.1415 else 0
 
-            # 2. Energy build-up at bottom (encourage fast motion at base)
-            + 1 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
+            # Control penalty
+            #-0.01 * self.u 
 
-            # 3. Penalize standing still at bottom (inaction)
-            - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
-
-            # 4. Penalize control effort
-            - 0.01 * (self.u**2)
-
-            # 5. Penalize high velocity at top
-            - 100 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
+            # Position at the top half reward
+            # 10 * abs(np.cos(np.pi - abs(self.th)))
+            # Overshoot penalty near upright
+            #(-5.0 if abs(self.delta_th) > 0.5 and abs(np.arctan2(np.sin(self.th - np.pi), np.cos(self.th - np.pi))) < 0.2 else 0)
         )
+
+
 
         self.render_mode = render_mode
         self.viewer = None  # Initialize the viewer here
         self.reset()
 
     def step(self, action):
-        self.u = [-3, -1, -0.5, 0, 0.5, 1, 3][action]
+        self.u = [-3, -1, 0, 1, 3][action]
         self.u = np.clip(self.u, -self.umax, self.umax)
 
         def f(t, y):
@@ -218,78 +216,99 @@ class UnbalancedDisk(gym.Env):
             self.viewer = None
 
 
-def train_actor_critic(env, actor_crit, n_episodes=1000, gamma=0.995, tau=1e-3,
-                       initial_epsilon=1.0, final_epsilon=0.05, epsilon_decay=0.995):
-    optimizer = optim.Adam(actor_crit.parameters(), lr=1e-3)
+def train_actor_critic(env, actor_crit, n_episodes=100, gamma=0.95, tau=1e-3,
+                       initial_epsilon=0.99, final_epsilon=0.05, epsilon_decay=0.99,
+                       n_action_repeat=8):
+    optimizer = optim.Adam(actor_crit.parameters(), lr=3e-4)
     epsilon = initial_epsilon
 
+    reward_history = []
+    actor_losses = []
+    critic_losses = []
+
     for episode in range(n_episodes):
-        print(f"Starting Episode {episode + 1}/{n_episodes} (ε={epsilon:.3f})")
+        # Run rollout
+        states, actions, rewards, next_states, dones = rollout(
+            actor_crit, env, N_rollout=1, epsilon=epsilon, n_action_repeat=n_action_repeat)
 
-        # Pass epsilon to rollout
-        states, actions, rewards, next_states, dones = rollout(actor_crit, env, N_rollout=50, epsilon=epsilon)
+        # Episode total reward
+        reward_history.append(np.sum(rewards))
 
-        # Training steps...
+        # Convert to tensors
         states = torch.tensor(states, dtype=torch.float32)
         actions = torch.tensor(actions, dtype=torch.long)
         rewards = torch.tensor(rewards, dtype=torch.float32)
         next_states = torch.tensor(next_states, dtype=torch.float32)
         dones = torch.tensor(dones, dtype=torch.bool)
 
+        # Target and value estimates
         next_values = actor_crit.critic(next_states)
-        target_values = rewards + gamma * next_values * (1 - dones.float())
+        target_values = rewards + gamma * next_values * (~dones).float()
 
         values = actor_crit.critic(states)
-        critic_loss = nn.MSELoss()(values, target_values)
+        critic_loss = nn.MSELoss()(values, target_values.detach())
 
         log_probs = actor_crit.actor(states, return_logp=True)
         selected_log_probs = log_probs.gather(1, actions.unsqueeze(1))
-        advantage = target_values - values.detach()
+        advantage = target_values.detach() - values
         actor_loss = -(selected_log_probs * advantage.detach()).mean()
 
-        total_loss = critic_loss + actor_loss
+        total_loss = actor_loss + critic_loss
 
+        # Update
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
 
-        # Decay epsilon (clipped to final_epsilon)
+        # Decay epsilon
         epsilon = max(final_epsilon, epsilon * epsilon_decay)
 
-        if episode % 100 == 0:
-            print(f"Episode {episode}, Total Loss: {total_loss.item()}")
+        # Store losses
+        actor_losses.append(actor_loss.item())
+        critic_losses.append(critic_loss.item())
+
+    return reward_history, actor_losses, critic_losses
 
 
-def rollout(actor_crit, env, N_rollout=250, epsilon=0.999):
+
+def rollout(actor_crit, env, N_rollout=250, epsilon=0.99, n_action_repeat=8):
     states, actions, rewards, next_states, dones = [], [], [], [], []
     obs, info = env.reset()
 
-    for _ in range(N_rollout):
-        probs = actor_crit.actor(torch.tensor(obs, dtype=torch.float32)[None, :])[0].detach().numpy()
+    action = None  # current action being repeated
+    repeat_counter = 0  # how many times the action has been repeated
 
-        # Epsilon-greedy action
-        if np.random.rand() < epsilon:
-            action = np.random.choice(env.action_space.n)
-        else:
-            action = np.argmax(probs)
+    for step in range(N_rollout):
+        # Choose new action if repeat count is over or if there's no action yet
+        if repeat_counter == 0 or action is None:
+            probs = actor_crit.actor(torch.tensor(obs, dtype=torch.float32)[None, :])[0].detach().numpy()
+            if np.random.rand() < epsilon:
+                action = np.random.choice(env.action_space.n)
+            else:
+                action = np.argmax(probs)
+            repeat_counter = n_action_repeat  # reset repeat counter
+
+        # Perform step with the current repeated action
+        obs_next, reward, terminated, truncated, info = env.step(action)
 
         states.append(obs)
         actions.append(action)
-
-        obs_next, reward, terminated, truncated, info = env.step(action)
         rewards.append(reward)
         next_states.append(obs_next)
         dones.append(terminated or truncated)
-        epsilon = max(0.05, epsilon * epsilon)
 
+        # Decrement repeat counter
+        repeat_counter -= 1
+
+        # Handle reset if episode ends
         if terminated or truncated:
             obs, info = env.reset()
+            action = None
+            repeat_counter = 0
         else:
             obs = obs_next
 
     return np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones)
-
-
 
 # Run simulation (visualize the policy)
 def show(actor_crit, env):
@@ -316,7 +335,34 @@ if __name__ == '__main__':
     actor_crit = ActorCritic(env)
 
     # Train the Actor-Critic model
-    train_actor_critic(env, actor_crit)
+    reward_history, actor_losses, critic_losses = train_actor_critic(env, actor_crit)
+    # Plot total rewards
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 3, 1)
+    plt.plot(reward_history)
+    plt.title("Total Reward per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.grid(True)
+
+    # Plot actor loss
+    plt.subplot(1, 3, 2)
+    plt.plot(actor_losses)
+    plt.title("Actor Loss per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Loss")
+    plt.grid(True)
+
+    # Plot critic loss
+    plt.subplot(1, 3, 3)
+    plt.plot(critic_losses)
+    plt.title("Critic Loss per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Loss")
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
 
     # Show the trained policy
     show(actor_crit, env)

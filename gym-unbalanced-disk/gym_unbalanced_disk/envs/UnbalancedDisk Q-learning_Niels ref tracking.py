@@ -1,11 +1,10 @@
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from scipy.integrate import solve_ivp
 from os import path
 import pickle
-import torch.nn as nn
-import torch
 from matplotlib import pyplot as plt
 # class gekopieerd van opdracht 6
 class Discretize_obs(gym.Wrapper):
@@ -87,7 +86,7 @@ class UnbalancedDisk(gym.Env):
             1000 * np.cos(self.th - np.pi)
 
             # Reward for being upright for a long time
-            + 10 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            + 50 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
             
             # Reward for swing amplitude: high when |th| is large (upside)
             + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
@@ -253,38 +252,66 @@ def argmax(a):
 
 
 
-class ActorCritic(nn.Module):
-    def __init__(self, env, hidden_size=40):
-        super(ActorCritic, self).__init__()
-        num_inputs = env.observation_space.shape[0]
-        num_actions = env.action_space.n
+def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.99999, gamma=0.9): # was alpha = 0.2 eps 0.2 gamma = 0.99
+    from collections import defaultdict
+    Qmat = defaultdict(float) #any new argument set to zero
+    env_time = env
+    # env_time = env.unwrapped
+    while not isinstance(env_time,gym.wrappers.TimeLimit):
+        env_time = env_time.env
+    ep_lengths = []
+    ep_lengths_steps = []
+    rewards = []
+    omegas = []
+    actions = []
+    epsilons = []
+    thetas = []
+    delta_ths = []
+    obs, info = env.reset()
+    print('goal reached time:')
+    for z in range(nsteps):
 
-        #define your layers here:
-        self.critic_linear1 = nn.Linear(num_inputs, hidden_size)  #a)
-        self.critic_linear2 = nn.Linear(hidden_size, 1) #a)
-        self.actor_linear1 = nn.Linear(num_inputs, hidden_size) #a)
-        self.actor_linear2 = nn.Linear(hidden_size, num_actions) #a)
-    
-    def actor(self, state, return_logp=False):
-        #state has shape (Nbatch, Nobs)
-        hidden = torch.tanh(self.actor_linear1(state)) #a)
-        h = self.actor_linear2(hidden) #a=)
-        h = h - torch.max(h,dim=1,keepdim=True)[0] #for additional numerical stability
-        logp = h - torch.log(torch.sum(torch.exp(h),dim=1,keepdim=True)) #log of the softmax
-        if return_logp:
-            return logp
+        if np.random.uniform()<eps:
+            action = env.action_space.sample()
         else:
-            return torch.exp(logp) #by default it will return the probability
+            action = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
+        actions.append(action)
+        obs_new, reward, terminated, truncated, info = env.step(action)
+        # print("reward", reward, "   info", info)
+        rewards.append(reward)
+        thetas.append(info[0])
+        omegas.append(info[1])
+        delta_ths.append(info[2])
+        if terminated: #terminal state and not by timeout
+            #saving results:
+            print(env_time._elapsed_steps, end=' ')
+            ep_lengths.append(env_time._elapsed_steps)
+            ep_lengths_steps.append(z)
+            # print("terminated") # verwijderen
+            
+            #updating Qmat:
+            A = reward - Qmat[obs,action] # adventage or TD
+            Qmat[obs,action] += alpha*A
+            obs, info = env.reset()
+        else: #not terminal
+            A = reward + gamma*max(Qmat[obs_new, action_next] for action_next in range(env.action_space.n)) - Qmat[obs,action]
+            Qmat[obs,action] += alpha*A
+            obs = obs_new
+            
+            if truncated: #terminal by truncation with timeout
+                #saving results:
+                ep_lengths.append(env_time._elapsed_steps)
+                ep_lengths_steps.append(z)
+                print('out', end=' ')
+                
+                #reset:
+                obs, info = env.reset()
+        epsilons.append(eps)
+        eps = max(0.05, eps * 0.9999) 
+    print()
     
-    def critic(self, state):
-        #state has shape (Nbatch, Nobs)
-        hidden = torch.tanh(self.critic_linear1(state)) #a)
-        return self.critic_linear2(hidden)[:,0] #a) #no activation function
-    
-    def forward(self, state):
-        #state has shape (Nbatch, Nobs)
-        return self.critic(state), self.actor(state)
-    
+    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths, epsilons]
+
 def roll_mean(ar,start=2000,N=50):
     s = 1-1/N
     k = start
@@ -296,24 +323,99 @@ def roll_mean(ar,start=2000,N=50):
 
 def train():
     Qmats = {}
-    for nvec in [10]:  # You can add more values like 20, 40 if desired
-        max_episode_steps = 300
+    for nvec in [10]:
+        max_episode_steps = 100
         env = UnbalancedDisk(nvec=nvec, dt=0.025)
         env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5_000_000, callbackfeq=5000)
-        rewards, omegas, actions, thetas, delta_ths = info
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=1_000_000, callbackfeq=5000)
+        rewards, omegas, actions, thetas, delta_ths, epsilons = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
         Qmats[nvec] = Qmat
 
-    plt.legend()
-    plt.show()
-    plt.plot(rewards)
-    plt.plot(thetas)
-    plt.show()
+        # ---- VISUALIZATION ---- #
+        # 1. Smoothed episode length
+        plt.figure()
+        plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label='Episode Length (Smoothed)')
+        plt.xlabel("Training Step")
+        plt.ylabel("Episode Length")
+        plt.title("Episode Length During Training")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+        # 2. Reward over time (raw and smoothed)
+        plt.figure()
+        plt.plot(rewards, alpha=0.3, label='Raw Reward')
+        plt.plot(roll_mean(np.array(rewards), N=200), label='Smoothed Reward')
+        plt.xlabel("Training Step")
+        plt.ylabel("Reward")
+        plt.title("Reward Over Time")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+        # 3. Theta (angle) over time
+        plt.figure()
+        plt.plot(thetas, alpha=0.5, label='θ (angle)')
+        plt.xlabel("Training Step")
+        plt.ylabel("Angle (rad)")
+        plt.title("Angular Position (θ) During Training")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+        # 4. Angular velocity (omega)
+        plt.figure()
+        plt.plot(omegas, alpha=0.5, label='ω (angular velocity)')
+        plt.xlabel("Training Step")
+        plt.ylabel("Angular Velocity (rad/s)")
+        plt.title("Angular Velocity During Training")
+        plt.grid(True)
+        plt.legend()
+        plt.show()
+
+        # 5. Actions taken
+        plt.figure()
+        plt.plot(actions, '.', alpha=0.2)
+        plt.xlabel("Training Step")
+        plt.ylabel("Action Index")
+        plt.title("Actions Taken Over Time")
+        plt.grid(True)
+        plt.show()
+
+        # 6. Optional: Heatmaps of Q-values
+        # def plot_q_value_heatmap(Qmat, action_space_size, nvec):
+        #     Q_table = np.zeros((nvec, nvec, action_space_size))
+        #     for (obs, action), value in Qmat.items():
+        #         th_idx, omega_idx = obs
+        #         if th_idx < nvec and omega_idx < nvec:  # Avoid out-of-bound keys
+        #             Q_table[th_idx, omega_idx, action] = value
+
+        #     for a in range(action_space_size):
+        #         plt.figure()
+        #         plt.imshow(Q_table[:, :, a], origin='lower',
+        #                    extent=[-40, 40, -np.pi, np.pi], aspect='auto')
+        #         plt.colorbar(label='Q-value')
+        #         plt.title(f'Q-values for action {a}')
+        #         plt.xlabel('Angular Velocity (ω)')
+        #         plt.ylabel('Angle (θ)')
+        #         plt.show()
+
+        # plot_q_value_heatmap(Qmat, env.action_space.n, nvec)
+
+        # 7. Epsilon decay
+        plt.figure()
+        plt.plot(epsilons)
+        plt.xlabel("Training Step")
+        plt.ylabel("Epsilon (ε)")
+        plt.title("Exploration Rate (ε) Decay Over Time")
+        plt.grid(True)
+        plt.show()
+
 
     with open("qmats.pkl", "wb") as f:
         pickle.dump(Qmats, f)
@@ -369,5 +471,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    #train()
+    train()
     run_simulation()
