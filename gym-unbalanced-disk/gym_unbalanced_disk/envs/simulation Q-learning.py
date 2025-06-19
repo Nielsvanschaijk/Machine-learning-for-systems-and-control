@@ -20,11 +20,6 @@ class Discretize_obs(gym.Wrapper):
         self.olow, self.ohigh = np.array([-np.pi,-40]), np.array([np.pi,40])
 
     def discretize(self,observation): #b)
-        # print("observation", type(observation))
-        # print("olow", type(self.olow), np.array(self.olow))
-        # print("minus", observation - self.olow)
-        # print("minus2", np.array(self.ohigh) - np.array(self.olow))
-        # print((observation - self.olow)/(np.array(self.ohigh) - np.array(self.olow)))
         return tuple(((observation - self.olow)/(self.ohigh - self.olow)*self.nvec).astype(int)) #b)
         
     def step(self, action):
@@ -58,20 +53,15 @@ class UnbalancedDisk(gym.Env):
         self.umax = umax
         self.dt = dt #time step
  
-
         # change anything here (compilable with the exercise instructions)
         self.action_space = spaces.Box(low=-umax,high=umax,shape=tuple()) #continuous
         
         self.action_space = spaces.Discrete(7)#7) #discrete
-        # print(self.action_space)
-        # low = [-float('inf'),-40] 
-        # high = [float('inf'),40]
-        # aangepast
+
         low = [-np.pi,-40] 
         high = [np.pi,40]
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
-        # print(self.observation_space)
-        nvec = nvec # was 100
+        nvec = nvec 
         '''
         UnbalancedDisk
         th =            
@@ -104,12 +94,6 @@ class UnbalancedDisk(gym.Env):
             - 50 * abs(self.omega) if abs(self.delta_th) >= np.pi-0.1415 else 0
 
         )
-        # self.reward_fun = lambda self: np.exp(-self.th)
-
-        #                                100*(1-np.abs(self.costh)) if abs(self.costh) < np.pi
-        #self.reward_fun = lambda self: 10000 if self.costh > 0.9 and np.abs(self.delta_th) > 0.1 else \
-        #                                100 - 5 * np.abs(self.delta_th) if self.costh > 0.9  else \
-        #                                75 * np.abs(self.delta_th) + 100 * self.costh 
         self.render_mode = render_mode
         self.viewer = None
         self.u = 0 #for visual
@@ -134,9 +118,6 @@ class UnbalancedDisk(gym.Env):
 
         reward = self.reward_fun(self)
         terminated = False
-        #terminated = abs(np.arctan2(np.sin(self.th - np.pi), np.cos(self.th - np.pi))) < 0.05 and abs(self.omega) < 0.1
-        if terminated:
-            reward += 1000.0
 
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
 
@@ -276,7 +257,6 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
             action = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
         actions.append(action)
         obs_new, reward, terminated, truncated, info = env.step(action)
-        # print("reward", reward, "   info", info)
         rewards.append(reward)
         thetas.append(info[0])
         omegas.append(info[1])
@@ -286,7 +266,6 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
             print(env_time._elapsed_steps, end=' ')
             ep_lengths.append(env_time._elapsed_steps)
             ep_lengths_steps.append(z)
-            # print("terminated") # verwijderen
             
             #updating Qmat:
             A = reward - Qmat[obs,action] # adventage or TD
@@ -328,7 +307,7 @@ def train():
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=1_000_000, callbackfeq=5000)
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5_000_000, callbackfeq=5000)
         rewards, omegas, actions, thetas, delta_ths = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
@@ -340,48 +319,36 @@ def train():
     plt.plot(thetas)
     plt.show()
 
-    with open("qmats.pkl", "wb") as f:
-        pickle.dump(Qmats, f)
-
-    with open("qmatspython.pkl", "wb") as f:
+    with open("sim_qmats.pkl", "wb") as f:
         pickle.dump(Qmats, f)
 
 def run_simulation():
-    with open("qmats.pkl", "rb") as f:
+    with open("sim_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDisk(dt=0.025)
-    env = Discretize_obs(env, nvec=10) # was 100
+    env = Discretize_obs(env, nvec=10)
     Qmat = Qmats[10]
 
     obs, info = env.reset()
-    # print('obs', obs)
     Y = [obs]
     env.render()
     try:
         for i in range(100):
-            # print("i", i)
             time.sleep(1/24)
-            # u = 3
-            # u = env.action_space.sample()
             u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
-            # print("u", u)
             obs, reward, done, truncated, info = env.step(u)
-            # print("obs", obs)
             Y.append(obs)
-            # print("Y", Y)
             env.render()
     finally:
         env.close()
     
     import numpy as np
-    # print("Y", len(Y), Y)
     Y = np.array(Y)
     undiscretizedY = []
     for item in Y[:,0]:
-        undiscretizedItem = approx_observation = -np.pi + (item + 0.5) * 2*np.pi / 100
+        undiscretizedItem = -np.pi + (item + 0.5) * 2*np.pi / 100
         undiscretizedY.append(undiscretizedItem)
-    # plt.plot(Y[:,0])
     undiscretizedY = np.array(undiscretizedY)
     plt.plot(undiscretizedY)
     plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
@@ -394,5 +361,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    train()
+    # train()
     run_simulation()

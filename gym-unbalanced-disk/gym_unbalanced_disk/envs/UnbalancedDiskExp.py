@@ -42,14 +42,38 @@ class UnbalancedDisk_exp(gym.Env):
 
         self.umax = umax
         self.dt = dt
- 
+        self.th = 0
         ### Gym things
         self.action_space = spaces.Box(low=-umax,high=umax,shape=tuple()) # continuous
         low = [-float('inf'),-30.]
         high = [float('inf'),30.]
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
 
-        self.reward_fun = lambda self: np.exp(-((self.th)%(2*np.pi)-np.pi)**2/(2*(np.pi/7)**2)) #example reward function, change this!
+        self.reward_fun = lambda self: (
+            # Big reward for being upright
+            1000 * np.cos(self.th - np.pi)
+
+            # Reward for being upright for a long time
+            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            
+            # Reward for swing amplitude: high when |th| is large (upside)
+            + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
+            
+            # Reward fast motion near bottom to encourage energy build-up
+            + 0.5 * (1 - np.cos(self.th)) * abs(self.omega_calc)
+            
+            # Penalize control effort
+            - 0.001 * self.u**2
+
+            # Penalize no swing angle at the bottom
+            - 0.1 * abs(self.delta_th) if abs(self.delta_th) < np.pi/2 else 0
+
+            # Pelanize large swing angle at the top
+            - 50 * abs(self.omega_calc) if abs(self.delta_th) >= np.pi-0.1415 else 0
+
+        )
+        
+        # lambda self: np.exp(-((self.th)%(2*np.pi)-np.pi)**2/(2*(np.pi/7)**2)) #example reward function, change this!
 
         #Viewer things
         self.render_mode = render_mode
@@ -82,9 +106,10 @@ class UnbalancedDisk_exp(gym.Env):
 
     def step(self, action):
         #convert action to u
-        self.u = action #continuous
-        # self.u = [-3,-1,0,1,3][action] #discrate
+        # self.u = 0#action #continuous # aangepast
+        self.u = [-3,-1, -0.5,0, 0.5, 1,3][action] #discrate
         # self.u = [-3,3][action] #discrate
+        # self.u = 3
 
         ##### Do not edit whats below ######
         self.u = np.clip(self.u,-self.umax,self.umax)
@@ -102,7 +127,8 @@ class UnbalancedDisk_exp(gym.Env):
             pass
         obs = self.get_obs()
         reward = self.reward_fun(self)
-        return obs, reward, False, False, {}
+        info = {"omega": self.omega, "delta_th": self.delta_th, "th": self.th, "omega_calc": self.omega_calc}
+        return obs, reward, False, False, info
         
     def reset(self,seed=None, options=None):
         theta_now = self.get_obs()[0]
@@ -153,7 +179,10 @@ class UnbalancedDisk_exp(gym.Env):
         omega = d[10]*-3.644127510645671 + d[14]*2.01877019753875 + d[12]*1.6121463023483062 + d[9]*-0.013751126061226403 #not entirely correct?
 
         #obs[2]: 2 theta
+        self.delta_th = np.arctan2(np.sin(position - self.th), np.cos(position - self.th))
         self.th = position
+        self.omega_calc = self.delta_th / self.dt
+        
         #obs[3]: 3 omega
         self.omega = omega#self.obs_raw[3]
         return np.array([self.th, self.omega])
