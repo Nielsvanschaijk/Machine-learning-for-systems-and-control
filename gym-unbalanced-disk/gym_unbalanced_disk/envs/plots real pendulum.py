@@ -223,7 +223,7 @@ def plots_moving():
     ax.axvline(x=np.pi, color='r')
     ax.text(3.14, ax.get_ylim()[0] - 1.2, '3.14', ha='center', va='top', color='red')
     ax.text(3.14, ax.get_ylim()[0], '|', ha='center', va='top', color='red')
-    plt.savefig('sim angle vs velocity.png', dpi=300, bbox_inches='tight')
+    plt.savefig('real angle vs velocity.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # velocity over time
@@ -234,7 +234,7 @@ def plots_moving():
     plt.ylabel("angular velocity (rad/s)")
     plt.title("angular velocity over time")
     ax.axhline(y=0, color='r')
-    plt.savefig('sim velocity over time.png', dpi=300, bbox_inches='tight')
+    plt.savefig('real velocity over time.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # angle over time
@@ -247,7 +247,7 @@ def plots_moving():
     ax.axhline(y=np.pi, color='r')
     ax.text(ax.get_xlim()[0] - 5, np.pi, '3.14', va='center', ha='right', color='red')
     ax.text(ax.get_xlim()[0], np.pi, '-', va='center', ha='right', color='red')
-    plt.savefig('sim angle over time.png', dpi=300, bbox_inches='tight')
+    plt.savefig('real angle over time.png', dpi=300, bbox_inches='tight')
     plt.show()
     
 
