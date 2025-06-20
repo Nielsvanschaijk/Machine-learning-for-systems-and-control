@@ -54,7 +54,7 @@ def argmax(a):
 
 
 def plots_still():
-    with open("real_qmats.pkl", "rb") as f:
+    with open("real_75mil_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
@@ -75,7 +75,7 @@ def plots_still():
             obs, reward, done, truncated, info = env.step(u)
             omegas.append(info["omega"])
             delta_ths.append(info["delta_th"])
-            omega_calcs.append(info["omega_calcs"])
+            omega_calcs.append(info["omega_calc"])
             Y.append(obs)
             env.render()
     finally:
@@ -105,50 +105,85 @@ def plots_still():
     plt.savefig('real omega vs omega_calc.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-    with open('real-life_delta_thetas.pkl', 'wb') as f:
-        pickle.dump(delta_ths, f)
-    with open('real-life_thetas.pkl', 'wb') as f:
-        pickle.dump(ths, f)
-    with open('real-life_omegas.pkl', 'wb') as f:
+    # with open('real-life_delta_thetas.pkl', 'wb') as f:
+    #     pickle.dump(delta_ths, f)
+    # with open('real-life_thetas.pkl', 'wb') as f:
+    #     pickle.dump(ths, f)
+    with open('real-life_omegas_plots.pkl', 'wb') as f:
         pickle.dump(omegas, f)
+    with open('real-life_omega_calcs_plots.pkl', 'wb') as f:
+        pickle.dump(omega_calcs, f)
 
 def plots_moving():
-    with open("real_qmats.pkl", "rb") as f:
-        Qmats = pickle.load(f)
-    import time
-    env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
-    env = Discretize_obs(env, nvec=10)
-    Qmat = Qmats[10]
+    # with open("real_75mil_qmats.pkl", "rb") as f:
+    #     Qmats = pickle.load(f)
+    # import time
+    # env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
+    # env = Discretize_obs(env, nvec=10)
+    # Qmat = Qmats[10]
 
-    obs, info = env.reset()
-    Y = [obs]
-    env.render()
-    thetas = []
-    omega_calcs = []
-    omegas = []
-    delta_ths = []
-    omega_calcs = []
-    try:
-        for i in range(100):
-            time.sleep(1/24)
-            u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
-            obs, reward, done, truncated, info = env.step(u)
-            thetas.append(info["th"])
-            omega_calcs.append(info["omega_calc"])
-            omegas.append(info["omega"])
-            delta_ths.append(info["delta_th"])
-            Y.append(obs)
-            env.render()
-    finally:
-        env.close()
+    # obs, info = env.reset()
+    # Y = [obs]
+    # env.render()
+    # with open("real-life_thetas.pkl", 'rb') as f:
+    #     thetas_01 = pickle.load(f) 
+    with open("real-life_thetas_2.pkl", 'rb') as f:
+        thetas_006 = pickle.load(f) 
+    with open("real-life_thetas_3.pkl", 'rb') as f:
+        thetas_0065 = pickle.load(f) 
+
+    with open("real-life_omega_calcs.pkl", 'rb') as f:
+        omega_calcs_01 = pickle.load(f) 
+    with open("real-life_omega_calcs_2.pkl", 'rb') as f:
+        omega_calcs_006 = pickle.load(f) 
+    with open("real-life_omega_calcs_3.pkl", 'rb') as f:
+        omega_calcs_0065 = pickle.load(f) 
+
+    with open("real-life_omegas.pkl", 'rb') as f:
+        omegas_01 = pickle.load(f) 
+    with open("real-life_omegas_2.pkl", 'rb') as f:
+        omegas_006 = pickle.load(f) 
+    with open("real-life_omegas_3.pkl", 'rb') as f:
+        omegas_0065 = pickle.load(f) 
+
+    with open("real-life_delta_thetas.pkl", 'rb') as f:
+        delta_thetas_01 = pickle.load(f) 
+    with open("real-life_delta_thetas_2.pkl", 'rb') as f:
+        delta_thetas_006 = pickle.load(f) 
+    with open("real-life_delta_thetas_3.pkl", 'rb') as f:
+        delta_thetas_0065 = pickle.load(f) 
+    # try:
+    #     for i in range(100):
+    #         time.sleep(1/24)
+    #         u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
+    #         obs, reward, done, truncated, info = env.step(u)
+    #         thetas.append(info["th"])
+    #         omega_calcs.append(info["omega_calc"])
+    #         omegas.append(info["omega"])
+    #         delta_ths.append(info["delta_th"])
+    #         Y.append(obs)
+    #         env.render()
+    # finally:
+    #     env.close()
     
     import numpy as np
 
     # angle vs velocity
     fig, ax = plt.subplots()
-    ax.plot(thetas, omega_calcs, 'bx')
+    timesteps = np.arange(500)
+    points = np.array([thetas_006, omega_calcs_006]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    from matplotlib.collections import LineCollection
+# Create LineCollection
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(2)
+    # ax.plot(thetas_006, omega_calcs_01)
+    ax.add_collection(lc)
+    sc = ax.scatter(thetas_006, omega_calcs_006, c=timesteps, cmap='viridis_r', marker='x')
     plt.xlabel("angle (rad)")
     plt.ylabel("angular velocity (rad/s)")
+    plt.colorbar(sc, label="Timestep")
     plt.title("angular velocity vs angle")
     ax.axhline(y=0, color='r')
     ax.axvline(x=np.pi, color='r')
@@ -158,9 +193,17 @@ def plots_moving():
     plt.show()
 
     # velocity over time
-    timesteps = np.arange(100)
+    
     fig, ax = plt.subplots()
-    ax.plot(timesteps, omega_calcs, 'bx')
+    # ax.plot(timesteps, omega_calcs_006, 'bx')
+    sc = ax.scatter(timesteps, omega_calcs_006, marker='x', c=timesteps, cmap = 'viridis_r')
+    points = np.array([timesteps, omega_calcs_006]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(1)
+    ax.add_collection(lc)
+    plt.colorbar(sc, label="Timestep")
     plt.xlabel("Time step")
     plt.ylabel("angular velocity (rad/s)")
     plt.title("angular velocity over time")
@@ -169,9 +212,8 @@ def plots_moving():
     plt.show()
 
     # angle over time
-    timesteps = np.arange(100)
     fig, ax = plt.subplots()
-    ax.plot(timesteps, thetas, 'bx')
+    ax.plot(timesteps, thetas_006, 'bx')
     plt.xlabel("Time step")
     plt.ylabel("angle (rad)")
     plt.title("angle over time")
@@ -189,5 +231,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    plots_still()
+    # plots_still()
     plots_moving()

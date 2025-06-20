@@ -18,12 +18,17 @@ class Discretize_obs(gym.Wrapper):
         
         self.observation_space = gym.spaces.MultiDiscrete(self.nvec)#([self.nvec, self.nvec]) #b)
         self.olow, self.ohigh = np.array([-np.pi,-40]), np.array([np.pi,40])
-
+        self.action_space = spaces.Box(low=-3.0,high=3.0,shape=tuple()) #continuous
+        
+        self.action_space = spaces.Discrete(7)
     def discretize(self,observation): #b)
+        
         return tuple(((observation - self.olow)/(self.ohigh - self.olow)*self.nvec).astype(int)) #b)
         
     def step(self, action):
         observation, reward, terminated, truncated, info = self.env.step(action) #b)
+        # print("29", observation)
+        observation = (observation[0], info["omega_calc"])
         return self.discretize(observation), reward, terminated, truncated, info #b)
 
     def reset(self):
@@ -308,12 +313,12 @@ def train():
     Qmats = {}
     for nvec in [10]:
         max_episode_steps = 300
-        env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
+        env = UnbalancedDisk(nvec=nvec, dt=0.025)
         env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
         env = Discretize_obs(env, nvec=nvec)
 
-        print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=3_000_000, callbackfeq=5000)
+        print('nvec =', nvec) # 3 miljoen trainen slechter dan 5 miljoen trainen
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=7_500_000, callbackfeq=5000)
         rewards, omegas, actions, thetas, delta_ths, omega_calcs = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
@@ -325,14 +330,15 @@ def train():
     plt.plot(thetas)
     plt.show()
 
-    with open("real_sim_qmats.pkl", "wb") as f:
+    with open("real_75mil_qmats.pkl", "wb") as f:
         pickle.dump(Qmats, f)
 
 def run_simulation():
-    with open("real_sim_qmats.pkl", "rb") as f:
+    with open("real_75mil_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
+    # env = UnbalancedDisk(nvec=10, dt=0.025)
     env = Discretize_obs(env, nvec=10) 
     Qmat = Qmats[10]
 
@@ -344,10 +350,13 @@ def run_simulation():
     Y = [obs]
     env.render()
     try:
-        for i in range(300):
-            time.sleep(1/24)
+        for i in range(500):
+            time.sleep(0.0065) # ori was 0.01 blijven haken _2 0.006 _3 0.0065
             u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
             obs, reward, done, truncated, info = env.step(u)
+            print(type(obs))
+            print(obs)
+            # obs[1] = info["omega_calc"]
             omegas.append(info["omega"])
             delta_ths.append(info["delta_th"])
             ths.append(info["th"])
@@ -367,13 +376,13 @@ def run_simulation():
     plt.plot(undiscretizedY)
     plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
     plt.show()
-    with open('real-life_delta_thetas.pkl', 'wb') as f:
+    with open('real-life_delta_thetas_3.pkl', 'wb') as f:
         pickle.dump(delta_ths, f)
-    with open('real-life_thetas.pkl', 'wb') as f:
+    with open('real-life_thetas_3.pkl', 'wb') as f:
         pickle.dump(ths, f)
-    with open('real-life_omegas.pkl', 'wb') as f:
+    with open('real-life_omegas_3.pkl', 'wb') as f:
         pickle.dump(omegas, f)
-    with open('real-life_omega_calcs.pkl', 'wb') as f:
+    with open('real-life_omega_calcs_3.pkl', 'wb') as f:
         pickle.dump(omega_calcs, f)
 
 if __name__ == '__main__':
