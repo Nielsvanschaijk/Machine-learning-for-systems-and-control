@@ -276,7 +276,7 @@ def plots_moving():
     ax.plot(angles, velocities, 'bx')
     plt.xlabel("angle (rad)")
     plt.ylabel("angular velocity (rad/s)")
-    plt.title("angular velocity vs angle")
+    plt.title("angular velocity $\omega$ vs angle $\\theta$")
     ax.axhline(y=0, color='r')
     ax.axvline(x=np.pi, color='r')
     ax.text(3.14, ax.get_ylim()[0] - 1.2, '3.14', ha='center', va='top', color='red')
