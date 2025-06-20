@@ -6,11 +6,7 @@ from scipy.integrate import solve_ivp
 from os import path
 import pickle
 from matplotlib import pyplot as plt
-import gym_unbalanced_disk
 import UnbalancedDiskExp
-import gymnasium
-import numpy as np
-from matplotlib import pyplot as plt
 class Discretize_obs(gym.Wrapper):
     def __init__(self, env, nvec=10):
         super(Discretize_obs, self).__init__(env) #sets self.env
@@ -22,9 +18,7 @@ class Discretize_obs(gym.Wrapper):
         
         self.observation_space = gym.spaces.MultiDiscrete(self.nvec)#([self.nvec, self.nvec]) #b)
         self.olow, self.ohigh = np.array([-np.pi,-40]), np.array([np.pi,40])
-        self.action_space = spaces.Box(low=-3.0,high=3.0,shape=tuple()) #continuous
-        
-        self.action_space = spaces.Discrete(7)#7) #discrete
+
     def discretize(self,observation): #b)
         return tuple(((observation - self.olow)/(self.ohigh - self.olow)*self.nvec).astype(int)) #b)
         
@@ -36,6 +30,201 @@ class Discretize_obs(gym.Wrapper):
         obs, info = self.env.reset()
         obs_dis = self.discretize(obs)  #b=)
         return obs_dis, info
+
+
+class UnbalancedDisk(gym.Env):
+    def __init__(self,nvec=40, umax=3., dt = 0.025, render_mode='human'):
+        ############# start do not edit  ################
+        self.omega0 = 11.339846957335382
+        self.delta_th = 0
+        self.gamma = 1.3328339309394384
+        self.Ku = 28.136158407237073
+        self.Fc = 6.062729509386865
+        self.coulomb_omega = 0.001
+
+        # self.g = 9.80155078791343
+        # self.J = 0.000244210523960356
+        # self.Km = 10.5081817407479
+        # self.I = 0.0410772235841364
+        # self.M = 0.0761844495320390
+        # self.tau = 0.397973147009910
+        ############# end do not edit ###################
+
+        self.umax = umax
+        self.dt = dt #time step
+ 
+        # change anything here (compilable with the exercise instructions)
+        self.action_space = spaces.Box(low=-umax,high=umax,shape=tuple()) #continuous
+        
+        self.action_space = spaces.Discrete(7)#7) #discrete
+
+        low = [-np.pi,-40] 
+        high = [np.pi,40]
+        self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
+        nvec = nvec 
+        '''
+        UnbalancedDisk
+        th =            
+                    +-pi
+                        |
+            pi/2   ----- -pi/2
+                        |
+                        0  = starting location
+        '''
+        self.reward_fun = lambda self: (
+            # Big reward for being upright
+            1000 * np.cos(self.th - np.pi)
+
+            # Reward for being upright for a long time
+            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            
+            # Reward for swing amplitude: high when |th| is large (upside)
+            + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
+            
+            # Reward fast motion near bottom to encourage energy build-up
+            + 0.5 * (1 - np.cos(self.th)) * abs(self.omega_calc)
+            
+            # Penalize control effort
+            - 0.001 * self.u**2
+
+            # Penalize no swing angle at the bottom
+            - 0.1 * abs(self.delta_th) if abs(self.delta_th) < np.pi/2 else 0
+
+            # Pelanize large swing angle at the top
+            - 50 * abs(self.omega_calc) if abs(self.delta_th) >= np.pi-0.1415 else 0
+
+        )
+        self.render_mode = render_mode
+        self.viewer = None
+        self.u = 0 #for visual
+        self.reset()
+
+    def step(self, action):
+        self.u = [-3, -1, -0.5, 0, 0.5, 1, 3][action]
+        self.u = np.clip(self.u, -self.umax, self.umax)
+
+        def f(t, y):
+            th, omega = y
+            dthdt = omega
+            friction = self.gamma * omega + self.Fc * np.tanh(omega / self.coulomb_omega)
+            domegadt = -self.omega0**2 * np.sin(th + self.delta_th) - friction + self.Ku * self.u
+            return np.array([dthdt, domegadt])
+
+        sol = solve_ivp(f, [0, self.dt], [self.th, self.omega])
+        th, self.omega = sol.y[:, -1]
+        self.delta_th = np.arctan2(np.sin(th - self.th), np.cos(th - self.th))
+        self.th = th
+        self.omega_calc = self.delta_th / self.dt
+        self.costh = -np.cos(th)
+
+        reward = self.reward_fun(self)
+        terminated = False
+        if terminated:
+            reward += 1000.0
+
+        return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th, self.omega_calc]
+
+         
+    def reset(self,seed=None, options=None):
+        self.th = np.random.normal(loc=0,scale=0.001)
+        self.omega = np.random.normal(loc=0,scale=0.001)
+        self.u = 0
+        self.delta_th = 0
+        self.omega_calc = self.omega
+        
+        return self.get_obs(), {}
+
+    def get_obs(self):
+        self.th_noise = self.th + np.random.normal(loc=0,scale=0.001) #do not edit
+        self.omega_noise = self.omega + np.random.normal(loc=0,scale=0.001) #do not edit
+        return np.array([self.th_noise, self.omega_noise])
+
+    def render(self):
+        import pygame
+        from pygame import gfxdraw
+        
+        screen_width = 500
+        screen_height = 500
+
+        th = self.th
+        omega = self.omega #x = self.state
+
+        if self.viewer is None:
+            pygame.init()
+            pygame.display.init()
+            self.viewer = pygame.display.set_mode((screen_width, screen_height))
+
+        self.surf = pygame.Surface((screen_width, screen_height))
+        self.surf.fill((255, 255, 255))
+        
+        gfxdraw.filled_circle( #central blue disk
+            self.surf,
+            screen_width//2,
+            screen_height//2,
+            int(screen_width/2*0.65*1.3),
+            (32,60,92),
+        )
+        gfxdraw.filled_circle( #small midle disk
+            self.surf,
+            screen_width//2,
+            screen_height//2,
+            int(screen_width/2*0.06*1.3),
+            (132,132,126),
+        )
+        
+        from math import cos, sin
+        r = screen_width//2*0.40*1.3
+        gfxdraw.filled_circle( #disk
+            self.surf,
+            int(screen_width//2-sin(th)*r), #is direction correct?
+            int(screen_height//2-cos(th)*r),
+            int(screen_width/2*0.22*1.3),
+            (155,140,108),
+        )
+        gfxdraw.filled_circle( #small nut
+            self.surf,
+            int(screen_width//2-sin(th)*r), #is direction correct?
+            int(screen_height//2-cos(th)*r),
+            int(screen_width/2*0.22/8*1.3),
+            (71,63,48),
+        )
+        
+        fname = path.join(path.dirname(__file__), "clockwise.png")
+        self.arrow = pygame.image.load(fname)
+        if self.u:
+            if isinstance(self.u, (np.ndarray,list)):
+                if self.u.ndim==1:
+                    u = self.u[0]
+                elif self.u.ndim==0:
+                    u = self.u
+                else:
+                    raise ValueError(f'u={u} is not the correct shape')
+            else:
+                u = self.u
+            arrow_size = abs(float(u)/self.umax*screen_height)*0.25
+            Z = (arrow_size, arrow_size)
+            arrow_rot = pygame.transform.scale(self.arrow,Z)
+            if self.u<0:
+                arrow_rot = pygame.transform.flip(arrow_rot, True, False)
+                
+        self.surf = pygame.transform.flip(self.surf, False, True)
+        self.viewer.blit(self.surf, (0, 0))
+        if self.u:
+            self.viewer.blit(arrow_rot, (screen_width//2-arrow_size//2, screen_height//2-arrow_size//2))
+        if self.render_mode == "human":
+            pygame.event.pump()
+            pygame.display.flip()
+
+        return True
+
+    def close(self):
+        if self.viewer is not None:
+            import pygame
+
+            pygame.display.quit()
+            pygame.quit()
+            self.isopen = False
+            self.viewer = None
 
 
 
@@ -62,6 +251,7 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
     actions = []
     thetas = []
     delta_ths = []
+    omega_calcs = []
     obs, info = env.reset()
     print('goal reached time:')
     for z in range(nsteps):
@@ -72,6 +262,11 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
             action = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
         actions.append(action)
         obs_new, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        thetas.append(info[0])
+        omegas.append(info[1])
+        delta_ths.append(info[2])
+        omega_calcs.append(info[3])
         if terminated: #terminal state and not by timeout
             #saving results:
             print(env_time._elapsed_steps, end=' ')
@@ -98,7 +293,7 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
         eps = max(0.05, eps * 0.999) 
     print()
     
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), []
+    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths, omega_calcs]
 
 def roll_mean(ar,start=2000,N=50):
     s = 1-1/N
@@ -111,26 +306,30 @@ def roll_mean(ar,start=2000,N=50):
 
 def train():
     Qmats = {}
-    try:
-        for nvec in [10]:
-            max_episode_steps = 300
-            env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
-            env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
-            env = Discretize_obs(env, nvec=nvec)
+    for nvec in [10]:
+        max_episode_steps = 300
+        env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
+        env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
+        env = Discretize_obs(env, nvec=nvec)
 
-            print('nvec =', nvec)
-            Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=350_000, callbackfeq=5000)
-            plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
-            Qmats[nvec] = Qmat
+        print('nvec =', nvec)
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=3_000_000, callbackfeq=5000)
+        rewards, omegas, actions, thetas, delta_ths, omega_calcs = info
 
-        plt.legend()
-        plt.show()
-    finally:
-        with open("real_qmats.pkl", "wb") as f:
-            pickle.dump(Qmats, f)
+        plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
+        Qmats[nvec] = Qmat
+
+    plt.legend()
+    plt.show()
+    plt.plot(rewards)
+    plt.plot(thetas)
+    plt.show()
+
+    with open("real_sim_qmats.pkl", "wb") as f:
+        pickle.dump(Qmats, f)
 
 def run_simulation():
-    with open("real_qmats.pkl", "rb") as f:
+    with open("real_sim_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
