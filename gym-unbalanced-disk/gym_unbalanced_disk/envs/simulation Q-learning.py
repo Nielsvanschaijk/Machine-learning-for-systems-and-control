@@ -118,6 +118,8 @@ class UnbalancedDisk(gym.Env):
 
         reward = self.reward_fun(self)
         terminated = False
+        if terminated:
+            reward += 1000.0
 
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
 
@@ -334,7 +336,7 @@ def run_simulation():
     Y = [obs]
     env.render()
     try:
-        for i in range(100):
+        for i in range(300):
             time.sleep(1/24)
             u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
             obs, reward, done, truncated, info = env.step(u)
