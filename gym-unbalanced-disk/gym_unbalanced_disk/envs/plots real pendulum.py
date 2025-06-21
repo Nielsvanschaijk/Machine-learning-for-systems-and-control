@@ -145,99 +145,106 @@ def plots_moving():
 
     import numpy as np
 
+    thetas = [thetas_006, thetas_0065]
+    omegas = [omegas_006, omegas_0065]
+    omega_calcs = [omega_calcs_006, omega_calcs_0065]
+    dts = ["006", "0065"]
     # angle vs velocity
-    fig, ax = plt.subplots()
     timesteps = np.arange(500)
-    points = np.array([thetas_006, omega_calcs_006]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    from matplotlib.collections import LineCollection
-    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-    lc.set_array(timesteps)
-    lc.set_linewidth(2)
+    for i in range(len(dts)):
+        fig, ax = plt.subplots()
+        points = np.array([thetas[i], omega_calcs[i]]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        from matplotlib.collections import LineCollection
+        lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+        lc.set_array(timesteps)
+        lc.set_linewidth(2)
 
-    xmin = min(thetas_006)
-    xmax = max(thetas_006)
-    print("xmin", xmin)
-    print(xmax)
-    lower_top = int(np.ceil((xmin - np.pi) / (2 * np.pi)))
-    upper_top = int(np.floor((xmax - np.pi) / (2 * np.pi)))
-    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+        xmin = min(thetas[i])
+        xmax = max(thetas[i])
+        lower_top = int(np.ceil((xmin - np.pi) / (2 * np.pi)))
+        upper_top = int(np.floor((xmax - np.pi) / (2 * np.pi)))
+        top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
 
-    bottom_multiples = np.arange(np.floor(xmin / (2 * np.pi)), np.ceil(xmax / (2*np.pi)) + 1)
-    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+        bottom_multiples = np.arange(np.floor(xmin / (2 * np.pi)), np.ceil(xmax / (2*np.pi)) + 1)
+        bottom_positions = bottom_multiples[1:-1] * 2*np.pi
 
-    ax.add_collection(lc)
-    sc = ax.scatter(thetas_006, omega_calcs_006, c=timesteps, cmap='viridis_r', marker='x')
-    for pos in top_positions:
-        ax.axvline(x=pos, color='red', linestyle='--', linewidth=0.8)
-        ax.text(pos + 0.1, ax.get_ylim()[0], 'top', color='red', fontsize=9, va='bottom', ha='left')
+        ax.add_collection(lc)
+        print(len(thetas[i]), len(omega_calcs[i]))
+        sc = ax.scatter(thetas[i], omega_calcs[i], c=timesteps, cmap='viridis_r', marker='x')
+        for pos in top_positions:
+            ax.axvline(x=pos, color='red', linestyle='--', linewidth=0.8)
+            ax.text(pos + 0.1, ax.get_ylim()[0], 'top', color='red', fontsize=9, va='bottom', ha='left')
 
-    for pos in bottom_positions:
-        ax.axvline(x=pos, color='blue', linestyle='--', linewidth=0.8)
-        ax.text(pos + 0.1, ax.get_ylim()[0], 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+        for pos in bottom_positions:
+            ax.axvline(x=pos, color='blue', linestyle='--', linewidth=0.8)
+            ax.text(pos + 0.1, ax.get_ylim()[0], 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
 
-    plt.xlabel("angle (rad)")
-    plt.ylabel("angular velocity (rad/s)")
-    plt.colorbar(sc, label="Timestep")
-    plt.title("angular velocity vs angle")
-    ax.axhline(y=0, color='r')
-    plt.savefig('real angle vs velocity.png', dpi=300, bbox_inches='tight')
-    plt.show()
+        plt.xlabel("angle (rad)")
+        plt.ylabel("angular velocity (rad/s)")
+        plt.colorbar(sc, label="Timestep")
+        plt.title("angular velocity vs angle")
+        ax.axhline(y=0, color='r')
+        plot_save_name = 'real angle vs velocity, dt = ' + dts[i] + '.png'
+        plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
+        plt.show()
 
-    # velocity over time
-    fig, ax = plt.subplots()
-    sc = ax.scatter(timesteps, omega_calcs_006, marker='x', c=timesteps, cmap = 'viridis_r')
-    points = np.array([timesteps, omega_calcs_006]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-    lc.set_array(timesteps)
-    lc.set_linewidth(1)
-    ax.add_collection(lc)
-    plt.colorbar(sc, label="Timestep")
-    plt.xlabel("Time step")
-    plt.ylabel("angular velocity (rad/s)")
-    plt.title("angular velocity over time")
-    ax.axhline(y=0, color='r')
-    plt.savefig('real velocity over time.png', dpi=300, bbox_inches='tight')
-    plt.show()
+        # velocity over time
+        fig, ax = plt.subplots()
+        sc = ax.scatter(timesteps, omega_calcs[i], marker='x', c=timesteps, cmap = 'viridis_r')
+        points = np.array([timesteps, omega_calcs[i]]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+        lc.set_array(timesteps)
+        lc.set_linewidth(1)
+        ax.add_collection(lc)
+        plt.colorbar(sc, label="Timestep")
+        plt.xlabel("Time step")
+        plt.ylabel("angular velocity (rad/s)")
+        plt.title("angular velocity over time")
+        ax.axhline(y=0, color='r')
+        plot_save_name = 'real velocity over time, dt = ' + dts[i] + '.png'
+        plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
+        plt.show()
 
-    # angle over time
-    fig, ax = plt.subplots()
-    ymin = min(thetas_006)
-    ymax = max(thetas_006)
-    # Compute lower and upper bounds for odd multiples of π
-    lower_top = int(np.ceil((ymin - np.pi) / (2 * np.pi)))
-    upper_top = int(np.floor((ymax - np.pi) / (2 * np.pi)))
+        # angle over time
+        fig, ax = plt.subplots()
+        ymin = min(thetas[i])
+        ymax = max(thetas[i])
+        # Compute lower and upper bounds for odd multiples of π
+        lower_top = int(np.ceil((ymin - np.pi) / (2 * np.pi)))
+        upper_top = int(np.floor((ymax - np.pi) / (2 * np.pi)))
 
-    # Generate odd multiples of π within the range
-    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+        # Generate odd multiples of π within the range
+        top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
 
-    bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
-    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+        bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
+        bottom_positions = bottom_multiples[1:-1] * 2*np.pi
 
-    sc = ax.scatter(timesteps, thetas_006, marker='x', c=timesteps, cmap = 'viridis_r')
-    points = np.array([timesteps, thetas_006]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-    lc.set_array(timesteps)
-    lc.set_linewidth(1)
-    ax.add_collection(lc)
+        sc = ax.scatter(timesteps, thetas[i], marker='x', c=timesteps, cmap = 'viridis_r')
+        points = np.array([timesteps, thetas[i]]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+        lc.set_array(timesteps)
+        lc.set_linewidth(1)
+        ax.add_collection(lc)
 
-    for pos in top_positions:
-        ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
-        ax.text(0, pos, 'top', color='red', fontsize=9, va='bottom', ha='left')
+        for pos in top_positions:
+            ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
+            ax.text(0, pos, 'top', color='red', fontsize=9, va='bottom', ha='left')
 
-    for pos in bottom_positions:
-        ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
-        ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+        for pos in bottom_positions:
+            ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
+            ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
 
-    plt.colorbar(sc, label="Timestep")
-    
-    plt.xlabel("Time step")
-    plt.ylabel("angle (rad)")
-    plt.title("angle over time")
-    plt.savefig('real angle over time.png', dpi=300, bbox_inches='tight')
-    plt.show()
+        plt.colorbar(sc, label="Timestep")
+        
+        plt.xlabel("Time step")
+        plt.ylabel("angle (rad)")
+        plt.title("angle over time")
+        plot_save_name = 'real angle over time, dt = ' + dts[i] + '.png'
+        plt.savefig('real angle over time.png', dpi=300, bbox_inches='tight')
+        plt.show()
     
 
 if __name__ == '__main__':
