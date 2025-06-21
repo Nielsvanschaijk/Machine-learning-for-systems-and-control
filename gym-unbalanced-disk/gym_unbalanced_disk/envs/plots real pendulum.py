@@ -117,18 +117,6 @@ def plots_still():
 
 
 def plots_moving():
-    # with open("real_75mil_qmats.pkl", "rb") as f:
-    #     Qmats = pickle.load(f)
-    # import time
-    # env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
-    # env = Discretize_obs(env, nvec=10)
-    # Qmat = Qmats[10]
-
-    # obs, info = env.reset()
-    # Y = [obs]
-    # env.render()
-    # with open("real-life_thetas.pkl", 'rb') as f:
-    #     thetas_01 = pickle.load(f) 
     with open("real-life_thetas_2.pkl", 'rb') as f:
         thetas_006 = pickle.load(f) 
     with open("real-life_thetas_3.pkl", 'rb') as f:
@@ -154,20 +142,7 @@ def plots_moving():
         delta_thetas_006 = pickle.load(f) 
     with open("real-life_delta_thetas_3.pkl", 'rb') as f:
         delta_thetas_0065 = pickle.load(f) 
-    # try:
-    #     for i in range(100):
-    #         time.sleep(1/24)
-    #         u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
-    #         obs, reward, done, truncated, info = env.step(u)
-    #         thetas.append(info["th"])
-    #         omega_calcs.append(info["omega_calc"])
-    #         omegas.append(info["omega"])
-    #         delta_ths.append(info["delta_th"])
-    #         Y.append(obs)
-    #         env.render()
-    # finally:
-    #     env.close()
-    
+
     import numpy as np
 
     # angle vs velocity
@@ -176,28 +151,41 @@ def plots_moving():
     points = np.array([thetas_006, omega_calcs_006]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
     from matplotlib.collections import LineCollection
-# Create LineCollection
     lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
     lc.set_array(timesteps)
     lc.set_linewidth(2)
-    # ax.plot(thetas_006, omega_calcs_01)
+
+    xmin = min(thetas_006)
+    xmax = max(thetas_006)
+    print("xmin", xmin)
+    print(xmax)
+    lower_top = int(np.ceil((xmin - np.pi) / (2 * np.pi)))
+    upper_top = int(np.floor((xmax - np.pi) / (2 * np.pi)))
+    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+
+    bottom_multiples = np.arange(np.floor(xmin / (2 * np.pi)), np.ceil(xmax / (2*np.pi)) + 1)
+    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+
     ax.add_collection(lc)
     sc = ax.scatter(thetas_006, omega_calcs_006, c=timesteps, cmap='viridis_r', marker='x')
+    for pos in top_positions:
+        ax.axvline(x=pos, color='red', linestyle='--', linewidth=0.8)
+        ax.text(pos + 0.1, ax.get_ylim()[0], 'top', color='red', fontsize=9, va='bottom', ha='left')
+
+    for pos in bottom_positions:
+        ax.axvline(x=pos, color='blue', linestyle='--', linewidth=0.8)
+        ax.text(pos + 0.1, ax.get_ylim()[0], 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+
     plt.xlabel("angle (rad)")
     plt.ylabel("angular velocity (rad/s)")
     plt.colorbar(sc, label="Timestep")
     plt.title("angular velocity vs angle")
     ax.axhline(y=0, color='r')
-    ax.axvline(x=np.pi, color='r')
-    ax.text(3.14, ax.get_ylim()[0] - 1.2, '3.14', ha='center', va='top', color='red')
-    ax.text(3.14, ax.get_ylim()[0], '|', ha='center', va='top', color='red')
     plt.savefig('real angle vs velocity.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # velocity over time
-    
     fig, ax = plt.subplots()
-    # ax.plot(timesteps, omega_calcs_006, 'bx')
     sc = ax.scatter(timesteps, omega_calcs_006, marker='x', c=timesteps, cmap = 'viridis_r')
     points = np.array([timesteps, omega_calcs_006]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
