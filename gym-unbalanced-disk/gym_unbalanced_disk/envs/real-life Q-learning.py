@@ -318,7 +318,7 @@ def train():
         env = Discretize_obs(env, nvec=nvec)
 
         print('nvec =', nvec) # 3 miljoen trainen slechter dan 5 miljoen trainen
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=7_500_000, callbackfeq=5000)
+        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=10_000_000, callbackfeq=5000)
         rewards, omegas, actions, thetas, delta_ths, omega_calcs = info
 
         plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
@@ -330,11 +330,11 @@ def train():
     plt.plot(thetas)
     plt.show()
 
-    with open("real_75mil_qmats.pkl", "wb") as f:
+    with open("real_10mil_qmats.pkl", "wb") as f:
         pickle.dump(Qmats, f)
 
 def run_simulation():
-    with open("real_75mil_qmats.pkl", "rb") as f:
+    with open("real_10mil_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDiskExp.UnbalancedDisk_exp(umax = 3.0,dt = 0.025)
@@ -392,5 +392,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    # train()
-    run_simulation()
+    train()
+    # run_simulation()

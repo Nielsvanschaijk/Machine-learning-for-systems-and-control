@@ -114,6 +114,8 @@ def plots_still():
     with open('real-life_omega_calcs_plots.pkl', 'wb') as f:
         pickle.dump(omega_calcs, f)
 
+
+
 def plots_moving():
     # with open("real_75mil_qmats.pkl", "rb") as f:
     #     Qmats = pickle.load(f)
@@ -213,13 +215,39 @@ def plots_moving():
 
     # angle over time
     fig, ax = plt.subplots()
-    ax.plot(timesteps, thetas_006, 'bx')
+    ymin = min(thetas_006)
+    ymax = max(thetas_006)
+    # Compute lower and upper bounds for odd multiples of π
+    lower_top = int(np.ceil((ymin - np.pi) / (2 * np.pi)))
+    upper_top = int(np.floor((ymax - np.pi) / (2 * np.pi)))
+
+    # Generate odd multiples of π within the range
+    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+
+    bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
+    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+
+    sc = ax.scatter(timesteps, thetas_006, marker='x', c=timesteps, cmap = 'viridis_r')
+    points = np.array([timesteps, thetas_006]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(1)
+    ax.add_collection(lc)
+
+    for pos in top_positions:
+        ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
+        ax.text(0, pos, 'top', color='red', fontsize=9, va='bottom', ha='left')
+
+    for pos in bottom_positions:
+        ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
+        ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+
+    plt.colorbar(sc, label="Timestep")
+    
     plt.xlabel("Time step")
     plt.ylabel("angle (rad)")
     plt.title("angle over time")
-    ax.axhline(y=np.pi, color='r')
-    ax.text(ax.get_xlim()[0] - 5, np.pi, '3.14', va='center', ha='right', color='red')
-    ax.text(ax.get_xlim()[0], np.pi, '-', va='center', ha='right', color='red')
     plt.savefig('real angle over time.png', dpi=300, bbox_inches='tight')
     plt.show()
     
