@@ -321,11 +321,11 @@ def train():
     plt.plot(thetas)
     plt.show()
 
-    with open("sim_qmats.pkl", "wb") as f:
+    with open("sim_3mil_qmats.pkl", "wb") as f:
         pickle.dump(Qmats, f)
 
 def run_simulation():
-    with open("real_75mil_qmats.pkl", "rb") as f:
+    with open("real_sim_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDisk(dt=0.025)
@@ -336,7 +336,7 @@ def run_simulation():
     Y = [obs]
     env.render()
     try:
-        for i in range(300):
+        for i in range(100):
             time.sleep(1/24)
             u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
             obs, reward, done, truncated, info = env.step(u)

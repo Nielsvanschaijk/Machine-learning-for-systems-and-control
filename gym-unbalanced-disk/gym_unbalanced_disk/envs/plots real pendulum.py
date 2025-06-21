@@ -170,7 +170,6 @@ def plots_moving():
         bottom_positions = bottom_multiples[1:-1] * 2*np.pi
 
         ax.add_collection(lc)
-        print(len(thetas[i]), len(omega_calcs[i]))
         sc = ax.scatter(thetas[i], omega_calcs[i], c=timesteps, cmap='viridis_r', marker='x')
         for pos in top_positions:
             ax.axvline(x=pos, color='red', linestyle='--', linewidth=0.8)
@@ -183,7 +182,7 @@ def plots_moving():
         plt.xlabel("angle (rad)")
         plt.ylabel("angular velocity (rad/s)")
         plt.colorbar(sc, label="Timestep")
-        plt.title("angular velocity vs angle")
+        plt.title("angular velocity $\omega_{calc}$ vs angle $\\theta$")
         ax.axhline(y=0, color='r')
         plot_save_name = 'real angle vs velocity, dt = ' + dts[i] + '.png'
         plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
@@ -201,7 +200,7 @@ def plots_moving():
         plt.colorbar(sc, label="Timestep")
         plt.xlabel("Time step")
         plt.ylabel("angular velocity (rad/s)")
-        plt.title("angular velocity over time")
+        plt.title("angular velocity $\omega_{calc}$ over time")
         ax.axhline(y=0, color='r')
         plot_save_name = 'real velocity over time, dt = ' + dts[i] + '.png'
         plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
@@ -241,9 +240,9 @@ def plots_moving():
         
         plt.xlabel("Time step")
         plt.ylabel("angle (rad)")
-        plt.title("angle over time")
+        plt.title("angle $\\theta$ over time")
         plot_save_name = 'real angle over time, dt = ' + dts[i] + '.png'
-        plt.savefig('real angle over time.png', dpi=300, bbox_inches='tight')
+        plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
         plt.show()
     
 

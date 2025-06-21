@@ -270,41 +270,95 @@ def plots_moving():
         env.close()
     
     import numpy as np
-
+    timesteps = np.arange(100)
     # angle vs velocity
     fig, ax = plt.subplots()
-    ax.plot(angles, velocities, 'bx')
+    points = np.array([angles, velocities]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    from matplotlib.collections import LineCollection
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(2)
+
+    xmin = min(angles)
+    xmax = max(angles)
+    lower_top = int(np.ceil((xmin - np.pi) / (2 * np.pi)))
+    upper_top = int(np.floor((xmax - np.pi) / (2 * np.pi)))
+    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+
+    bottom_multiples = np.arange(np.floor(xmin / (2 * np.pi)), np.ceil(xmax / (2*np.pi)) + 1)
+    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+
+    ax.add_collection(lc)
+    sc = ax.scatter(angles, velocities, c=timesteps, cmap='viridis_r', marker='x')
+    for pos in top_positions:
+        ax.axvline(x=pos, color='red', linestyle='--', linewidth=0.8)
+        ax.text(pos + 0.1, ax.get_ylim()[0], 'top', color='red', fontsize=9, va='bottom', ha='left')
+
+    for pos in bottom_positions:
+        ax.axvline(x=pos, color='blue', linestyle='--', linewidth=0.8)
+        ax.text(pos + 0.1, ax.get_ylim()[0], 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+
     plt.xlabel("angle (rad)")
     plt.ylabel("angular velocity (rad/s)")
+    plt.colorbar(sc, label="Timestep")
     plt.title("angular velocity $\omega$ vs angle $\\theta$")
     ax.axhline(y=0, color='r')
-    ax.axvline(x=np.pi, color='r')
-    ax.text(3.14, ax.get_ylim()[0] - 1.2, '3.14', ha='center', va='top', color='red')
-    ax.text(3.14, ax.get_ylim()[0], '|', ha='center', va='top', color='red')
     plt.savefig('sim angle vs velocity.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # velocity over time
-    timesteps = np.arange(100)
     fig, ax = plt.subplots()
-    ax.plot(timesteps, velocities, 'bx')
+    sc = ax.scatter(timesteps, velocities, marker='x', c=timesteps, cmap = 'viridis_r')
+    points = np.array([timesteps, velocities]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(1)
+    ax.add_collection(lc)
+    plt.colorbar(sc, label="Timestep")
     plt.xlabel("Time step")
     plt.ylabel("angular velocity (rad/s)")
-    plt.title("angular velocity over time")
+    plt.title("angular velocity $\omega$ over time")
     ax.axhline(y=0, color='r')
     plt.savefig('sim velocity over time.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # angle over time
-    timesteps = np.arange(100)
     fig, ax = plt.subplots()
-    ax.plot(timesteps, angles, 'bx')
+    ymin = min(angles)
+    ymax = max(angles)
+    # Compute lower and upper bounds for odd multiples of π
+    lower_top = int(np.ceil((ymin - np.pi) / (2 * np.pi)))
+    upper_top = int(np.floor((ymax - np.pi) / (2 * np.pi)))
+
+    # Generate odd multiples of π within the range
+    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+
+    bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
+    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+
+    sc = ax.scatter(timesteps, angles, marker='x', c=timesteps, cmap = 'viridis_r')
+    points = np.array([timesteps, angles]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(1)
+    ax.add_collection(lc)
+
+    for pos in top_positions:
+        ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
+        ax.text(0, pos, 'top', color='red', fontsize=9, va='bottom', ha='left')
+
+    for pos in bottom_positions:
+        ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
+        ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+
+    plt.colorbar(sc, label="Timestep")
+        
     plt.xlabel("Time step")
     plt.ylabel("angle (rad)")
-    plt.title("angle over time")
-    ax.axhline(y=np.pi, color='r')
-    ax.text(ax.get_xlim()[0] - 5, np.pi, '3.14', va='center', ha='right', color='red')
-    ax.text(ax.get_xlim()[0], np.pi, '-', va='center', ha='right', color='red')
+    plt.title("angle $\\theta$ over time")
     plt.savefig('sim angle over time.png', dpi=300, bbox_inches='tight')
     plt.show()
 
