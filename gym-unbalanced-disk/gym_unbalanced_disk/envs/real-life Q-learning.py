@@ -127,7 +127,12 @@ class UnbalancedDisk(gym.Env):
         if terminated:
             reward += 1000.0
 
-        return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th, self.omega_calc]
+        return self.get_obs(), reward, terminated, False, {
+            "th": self.th,
+            "omega": self.omega,
+            "delta_th": self.delta_th,
+            "omega_calc": self.omega_calc
+        }
 
          
     def reset(self,seed=None, options=None):
@@ -268,10 +273,10 @@ def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9):
         actions.append(action)
         obs_new, reward, terminated, truncated, info = env.step(action)
         rewards.append(reward)
-        thetas.append(info[0])
-        omegas.append(info[1])
-        delta_ths.append(info[2])
-        omega_calcs.append(info[3])
+        thetas.append(info["th"])
+        omegas.append(info["omega"])
+        delta_ths.append(info["delta_th"])
+        omega_calcs.append(info["omega_calc"])
         if terminated: #terminal state and not by timeout
             #saving results:
             print(env_time._elapsed_steps, end=' ')
