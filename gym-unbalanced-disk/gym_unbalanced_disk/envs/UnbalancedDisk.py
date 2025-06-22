@@ -69,7 +69,7 @@ class UnbalancedDisk(gym.Env):
         ##### End do not edit   #####
 
         reward = self.reward_fun(self)
-        return self.get_obs(), reward, False, False#, {}
+        return self.get_obs(), reward, False, False, {}
          
     def reset(self,seed=None, options=None):
         self.th = np.random.normal(loc=0,scale=0.001)
@@ -193,7 +193,7 @@ if __name__ == '__main__':
     try:
         for i in range(100):
             time.sleep(1/24)
-            u = 3#env.action_space.sample()
+            u = env.action_space.sample()
             obs, reward, done, info = env.step(u)
             Y.append(obs)
             env.render()

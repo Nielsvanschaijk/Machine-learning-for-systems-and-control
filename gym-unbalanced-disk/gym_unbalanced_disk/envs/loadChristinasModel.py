@@ -60,7 +60,7 @@ class Printer(BaseCallback):
 vec_env = make_vec_env(lambda: make_env(EXPERIMENT), n_envs=N_ENVS)
 vec_env = VecMonitor(vec_env)
 
-model = SAC.load("models/sac_unbalanced_disk", env=vec_env)
+model = SAC.load("sac model test", env=vec_env)
 demo_env = make_env(experiment=False, render_mode="human")
 obs, _ = demo_env.reset()
 
