@@ -11,7 +11,10 @@ from matplotlib import pyplot as plt
 from os import path
 from AC_Continue_Learning import UnbalancedDisk
 
+max_episode_steps = 300
+
 env = UnbalancedDisk()
+env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps)
 
 class ActorCritic(nn.Module):
     def __init__(self, env, hidden_size=64):
@@ -61,11 +64,35 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from collections import deque
+import time
+
+def run_simulation(env, model, max_steps=500, render_delay=1/24):
+    state, _ = env.reset()
+    total_reward = 0
+
+    for step in range(max_steps):
+        state_tensor = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        with torch.no_grad():
+            action_probs = model.actor(state_tensor)[0]
+        action = torch.argmax(action_probs).item()  # choose the most likely action
+
+        state, reward, done, _, _ = env.step(action)
+        total_reward += reward
+
+        env.render()
+        time.sleep(render_delay)  # slow down rendering
+
+        if done:
+            break
+
+    env.close()
+    print(f"Simulation ended. Total reward: {total_reward:.2f}")
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = ActorCritic(env).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
 
 def select_action(state):
     state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
@@ -81,60 +108,88 @@ def compute_returns(rewards, gamma=0.99):
         returns.insert(0, R)
     return torch.tensor(returns, dtype=torch.float32, device=device)
 
+skip_simulation = False
+
 # Training Loop
-num_episodes = 1000
-gamma = 0.99
+def training_loop(num_episodes = 10000, gamma = 0.95):
 
-reward_log = []
+    try:
+        reward_log = []
+        reward_threshold = 25000
 
-for episode in range(num_episodes):
-    state, _ = env.reset()
-    done = False
+        for episode in range(num_episodes):
+            state, _ = env.reset()
+            done = False
 
-    log_probs = []
-    values = []
-    rewards = []
+            log_probs = []
+            values = []
+            rewards = []
 
-    while not done:
-        action, log_prob = select_action(state)
-        value = model.critic(torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0))[0]
+            index = 0
+            while not done:
+                action, log_prob = select_action(state)
+                value = model.critic(torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0))[0]
 
-        next_state, reward, done, _, _ = env.step(action)
+                next_state, reward, done, _, _ = env.step(action)
 
-        log_probs.append(torch.log(log_prob + 1e-8))  # log prob of taken action
-        values.append(value)
-        rewards.append(reward)
+                log_probs.append(torch.log(log_prob + 1e-8))  # log prob of taken action
+                values.append(value)
+                rewards.append(reward)
 
-        state = next_state
+                state = next_state
+                if index > 500:
+                    done = True
+                index += 1
 
-    # Compute returns and advantages
-    returns = compute_returns(rewards, gamma)
-    values = torch.stack(values)
-    log_probs = torch.stack(log_probs)
+            # Compute returns and advantages
+            returns = compute_returns(rewards, gamma)
+            values = torch.stack(values)
+            log_probs = torch.stack(log_probs)
 
-    advantage = returns - values
+            advantage = returns - values
 
-    # Losses
-    actor_loss = -(log_probs * advantage.detach()).mean()
-    critic_loss = F.mse_loss(values, returns)
-    loss = actor_loss + critic_loss
+            # Losses
+            actor_loss = -(log_probs * advantage.detach()).mean()
+            critic_loss = F.mse_loss(values, returns)
+            loss = actor_loss + critic_loss
 
-    # Update
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+            # Update
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-    episode_reward = sum(rewards)
-    reward_log.append(episode_reward)
+            episode_reward = sum(rewards)
+            reward_log.append(episode_reward)
 
-    avg_reward = np.mean(reward_log[-10:])
-    print(f"Episode {episode}, reward: {episode_reward:.2f}, avg: {avg_reward:.2f}")
+            avg_reward = np.mean(reward_log[-10:])
+            print(f"Episode {episode}, reward: {episode_reward:.2f}, avg: {avg_reward:.2f}")
+            
+            if episode_reward >= reward_threshold:
+                print(f"Stopping early at episode {episode} with reward {episode_reward:.2f}")
+                break
+        # Plot reward history
+        import matplotlib.pyplot as plt
+        plt.plot(reward_log)
+        plt.xlabel("Episode")
+        plt.ylabel("Total Reward")
+        plt.title("Training Progress")
+        plt.grid(True)
+        plt.show()
+        run_simulation(env, model)
 
-# Plot reward history
-import matplotlib.pyplot as plt
-plt.plot(reward_log)
-plt.xlabel("Episode")
-plt.ylabel("Total Reward")
-plt.title("Training Progress")
-plt.grid(True)
-plt.show()
+    except KeyboardInterrupt:
+        # Plot reward history
+        import matplotlib.pyplot as plt
+        plt.plot(reward_log)
+        plt.xlabel("Episode")
+        plt.ylabel("Total Reward")
+        plt.title("Training Progress")
+        plt.grid(True)
+        plt.show()
+        run_simulation(env, model)
+        skip_simulation = True
+
+training_loop()
+
+if not skip_simulation:
+    run_simulation(env, model)

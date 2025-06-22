@@ -124,7 +124,7 @@ class UnbalancedDisk(gym.Env):
             # 1000 * np.cos(self.th - np.pi)
 
             # Reward for being upright for a long time
-            + 300 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            + 150 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
 
             # 2. Energy build-up at bottom (encourage fast motion at base)
             + 25 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
@@ -133,17 +133,18 @@ class UnbalancedDisk(gym.Env):
             - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
 
             # 4. Penalize control effort
-            - 0.001 * (self.u**2)
+            - 0.01 * (self.u**2)
 
             # 5. Penalize high velocity at top
-            - 300 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
+            - 100 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
 
             # 6. Reward for reaching higher position
-            + 100 * np.sin(self.th)
+            + 10 * np.sin(self.th)
 
-            # 7. Penalize jitteriness in control effort
-            - 100 * abs(self.u_last-self.u)
+            # 7. Penalize high velocity for a long time
+            - 10 * abs(sum(self.omega_past))
         )
+        self.omega_past = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.x = np.array([self.th, self.omega])
         self.r_matrix = np.array([[5, 0], [0, 0.1]])
         self.P = self.reward_fun
@@ -173,14 +174,16 @@ class UnbalancedDisk(gym.Env):
         self.th = (th + np.pi) % (2 * np.pi) - np.pi
         self.costh = -np.cos(th)
         self.x = np.array([self.th, self.omega])
+        self.omega_past = [self.omega] + self.omega_past
+        self.omega_past = self.omega_past[:10]
 
         # reward = self.reward_fun(self)
         # reward = self.P(self)
         reward = self.reward_fun(self)
         # terminated = False
         # terminated = np.abs(self.th) > 3.05 and np.abs(self.omega) < 0.1
-        # terminated = False
-        terminated = np.abs(self.th) > 3.05
+        terminated = False
+        #terminated = np.abs(self.th) > 3.05
         if terminated:
             print(terminated)
         return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
