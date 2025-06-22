@@ -60,7 +60,7 @@ class UnbalancedDisk(gym.Env):
         self.Ku = 28.136158407237073
         self.Fc = 6.062729509386865
         self.coulomb_omega = 0.001
-
+        self.th_ref = np.pi
         self.umax = umax
         self.dt = dt
         self.action_space = gym.spaces.Discrete(7)
@@ -80,7 +80,7 @@ class UnbalancedDisk(gym.Env):
         #     reward += - 0.01 * (self.u**2)
         #     reward += - 100 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
         #     return reward
-        self.reward_fun = lambda self: (
+        # self.reward_fun = lambda self: (
             # np.exp(-(self.th%(2*np.pi)-np.pi)**2/(2*(np.pi/7)**2))
             # + 4 * (1 - np.cos(self.th)) * abs(self.omega)
             # - 0.1 * abs(self.omega) if abs(self.omega) < np.pi/2 else 0 # now swimg bottom
@@ -121,26 +121,46 @@ class UnbalancedDisk(gym.Env):
 
             # 1000 * np.cos(self.th - np.pi)
 
-            # Reward for being upright for a long time
-            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+        #     # Reward for being upright for a long time
+        #     + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
 
-            # 2. Energy build-up at bottom (encourage fast motion at base)
-            + 25 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
+        #     # 2. Energy build-up at bottom (encourage fast motion at base)
+        #     + 25 * np.exp(-(self.th**2) / 0.5) * abs(self.omega)
 
-            # 3. Penalize standing still at bottom (inaction)
-            - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
+        #     # 3. Penalize standing still at bottom (inaction)
+        #     - 2 * np.exp(-(self.th**2) / 0.5) * np.exp(-abs(self.omega))
 
-            # 4. Penalize control effort
-            - 0.001 * (self.u**2)
+        #     # 4. Penalize control effort
+        #     - 0.001 * (self.u**2)
 
-            # 5. Penalize high velocity at top
-            - 300 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
+        #     # 5. Penalize high velocity at top
+        #     - 300 * (abs(self.omega)) if abs((self.th - np.pi) % (2 * np.pi) - np.pi) < 0.15 else 0
 
-            # 6. Reward for reaching higher position
-            + 100 * np.sin(self.th)
+        #     # 6. Reward for reaching higher position
+        #     + 100 * np.sin(self.th)
 
-            # 7. Penalize jitteriness in control effort
-            - 10 * abs(self.u_last-self.u)
+        #     # 7. Penalize jitteriness in control effort
+        #     - 10 * abs(self.u_last-self.u)
+        # )
+
+        self.err = lambda self: abs(((self.th - np.pi + np.pi) % (2 * np.pi)) - np.pi)
+
+        W1 = 10
+        W3 = 0.001 # was 0.001
+        W_TOP = 200 # was 100
+        W_TOP_SMALL = 50 # was 20
+        W_BOT = 100
+        W_TOP_SPIN = 0.75
+        W_BOT_SPIN = 10
+
+        self.reward_fun = lambda self: (
+        W1 * np.cos(self.err(self)) # cos shape, - for being far from the 0 err,  + reward for being at the top
+        - W3 * self.u ** 2 # voltage penalization 
+        + W_TOP * np.exp(-20 * (self.err(self)-self.th_ref)*2 - 0.5 * self.omega*2) # gaussian at the top, more reward for slow speed and being at the top
+        - W_BOT * np.exp(-(self.err(self)-np.pi)*2 - 0.05 * self.omega*2) # upside down gaussian at the bottom, for not moving behaviour
+        - W_TOP_SPIN * abs(self.omega) * (self.err(self) < 0.3 ) # so when it is in the top 0.3 rad give a const * speed penalty, to slow it down at the top. does make it a sparse reward function.
+        - min(W_BOT_SPIN * np.maximum(0, abs(self.th) - (4/3)*np.pi) * 2, 2000)
+        + W_TOP_SMALL * np.exp(-0.5 * self.err(self)*2 -0.007 * self.omega*2) # small gausian reward for being at the top, not as strict as the big reward at the top. to guide the algorithm into the top.
         )
         self.x = np.array([self.th, self.omega])
         self.r_matrix = np.array([[5, 0], [0, 0.1]])
