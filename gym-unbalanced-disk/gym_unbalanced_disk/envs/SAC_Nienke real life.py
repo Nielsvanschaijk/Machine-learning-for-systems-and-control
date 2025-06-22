@@ -10,8 +10,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from matplotlib import pyplot as plt
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecMonitor
-# class gekopieerd van opdracht 6
-
+import UnbalancedDiskExp
 
 class UnbalancedDisk(gym.Env):
     def __init__(self,nvec=40, umax=3., dt = 0.025, render_mode='human'):
@@ -200,7 +199,12 @@ class UnbalancedDisk_sincos(UnbalancedDisk):
         self.omega_noise = self.omega + np.random.normal(loc=0,scale=0.001) #do not edit
         return np.array([np.sin(self.th_noise), np.cos(self.th_noise), self.omega_noise]) #change anything here
 
-
+class ChangeOmega(gym.Wrapper):
+    def step(self, action):
+        observation, reward, terminated, truncated, info = self.env.step(action) #b)
+        # print("29", observation)
+        observation = (observation[0], info["omega_calc"])
+        return observation, reward, terminated, truncated, info #b)
 
 class Printer(BaseCallback):
     def __init__(self, freq=500):
@@ -219,12 +223,15 @@ class Printer(BaseCallback):
             print(f"[{self.t:6}] mean50={np.mean(self.buf):.3f}")
         return True
 def make_env(experiment=False, render_mode=None):
-    env = UnbalancedDisk_sincos(umax=3.0, dt=0.025)
+    env = UnbalancedDiskExp.UnbalancedDisk_exp_sincos(umax=3.0, dt=0.025)
+    env = ChangeOmega(env)
     env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
     return env
 def train():
-  
-    vec_env = make_vec_env(lambda: make_env(), n_envs=8)
+    # env = UnbalancedDisk_sincos(nvec=None, dt=0.025)
+    # env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
+        
+    vec_env = make_vec_env(lambda: make_env(), n_envs=1)
     vec_env = VecMonitor(vec_env)
 
     model = SAC("MlpPolicy", vec_env,
@@ -234,12 +241,14 @@ def train():
     print("\nTraining…\n")
     model.learn(total_timesteps=120_000, callback=Printer())
     model.save("sac model test.zip")
-    print("\nSaved model →", "sac model test.zip", "\n")
+    print("\nSaved model →", "sac model real trained.zip", "\n")
 
     
 
 def run_simulation():
-    vec_env = make_vec_env(lambda: make_env(), n_envs=8)
+    ths = []
+    omega_calcs = []
+    vec_env = make_vec_env(lambda: make_env(), n_envs=1)
     vec_env = VecMonitor(vec_env)
 
     model = SAC.load("sac model test", env=vec_env)
@@ -253,12 +262,21 @@ def run_simulation():
         # print("hi")
         action, _ = model.predict(obs, deterministic=True)
         print('action', action)
-        obs, _, terminated, truncated, _ = demo_env.step(action)
+        obs, _, terminated, truncated, info = demo_env.step(action)
+        ths.append(info["th"])
+        omega_calcs.append(info["omega_calc"])
         demo_env.render()
         time.sleep(1/24)  # Control rendering speed
         if terminated or truncated:
             obs, _ = demo_env.reset()
     demo_env.close()
+
+
+    with open('sac_real-life_thetas_3.pkl', 'wb') as f:
+        pickle.dump(ths, f)
+
+    with open('sac_real-life_omega_calcs_3.pkl', 'wb') as f:
+        pickle.dump(omega_calcs, f)
 
 if __name__ == '__main__':
     import argparse
