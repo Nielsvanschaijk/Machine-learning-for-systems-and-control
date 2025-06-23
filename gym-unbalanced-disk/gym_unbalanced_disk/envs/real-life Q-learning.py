@@ -356,7 +356,7 @@ def run_simulation():
     env.render()
     try:
         for i in range(500):
-            time.sleep(0.0065) # ori was 0.01 blijven haken _2 0.006 _3 0.0065
+            time.sleep(1/24) # ori was 0.01 blijven haken _2 0.006 _3 0.0065 4 1/24
             u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
             obs, reward, done, truncated, info = env.step(u)
             print(type(obs))
@@ -381,13 +381,13 @@ def run_simulation():
     plt.plot(undiscretizedY)
     plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
     plt.show()
-    with open('real-life_delta_thetas_3.pkl', 'wb') as f:
+    with open('real-life_delta_thetas_4.pkl', 'wb') as f:
         pickle.dump(delta_ths, f)
-    with open('real-life_thetas_3.pkl', 'wb') as f:
+    with open('real-life_thetas_4.pkl', 'wb') as f:
         pickle.dump(ths, f)
-    with open('real-life_omegas_3.pkl', 'wb') as f:
+    with open('real-life_omegas_4.pkl', 'wb') as f:
         pickle.dump(omegas, f)
-    with open('real-life_omega_calcs_3.pkl', 'wb') as f:
+    with open('real-life_omega_calcs_4.pkl', 'wb') as f:
         pickle.dump(omega_calcs, f)
 
 if __name__ == '__main__':
@@ -397,5 +397,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    train()
-    # run_simulation()
+    # train()
+    run_simulation()

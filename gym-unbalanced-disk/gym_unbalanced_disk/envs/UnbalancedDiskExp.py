@@ -107,9 +107,10 @@ class UnbalancedDisk_exp(gym.Env):
     def step(self, action):
         #convert action to u
         # self.u = 0#action #continuous # aangepast
-        self.u = [-3,-1, -0.5,0, 0.5, 1,3][action] #discrate
+        # self.u = [-3,-1, -0.5,0, 0.5, 1,3][action] #discrate
         # self.u = [-3,3][action] #discrate
         # self.u = 3
+        self.u = action
 
         ##### Do not edit whats below ######
         self.u = np.clip(self.u,-self.umax,self.umax)
