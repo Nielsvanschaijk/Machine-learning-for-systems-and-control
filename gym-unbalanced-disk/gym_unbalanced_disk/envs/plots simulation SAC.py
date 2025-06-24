@@ -6,30 +6,9 @@ from scipy.integrate import solve_ivp
 from os import path
 import pickle
 from matplotlib import pyplot as plt
-# class gekopieerd van opdracht 6
-class Discretize_obs(gym.Wrapper):
-    def __init__(self, env, nvec=10):
-        super(Discretize_obs, self).__init__(env) #sets self.env
-        if isinstance(nvec,int): #nvec in each dimention
-            self.nvec = [nvec]*np.prod(env.observation_space.shape,dtype=int)
-        else:
-            self.nvec = nvec
-        self.nvec = np.array(nvec) #(Nobs,) array
-        
-        self.observation_space = gym.spaces.MultiDiscrete(self.nvec)#([self.nvec, self.nvec]) #b)
-        self.olow, self.ohigh = np.array([-np.pi,-40]), np.array([np.pi,40])
-
-    def discretize(self,observation): #b)
-        return tuple(((observation - self.olow)/(self.ohigh - self.olow)*self.nvec).astype(int)) #b)
-        
-    def step(self, action):
-        observation, reward, terminated, truncated, info = self.env.step(action) #b)
-        return self.discretize(observation), reward, terminated, truncated, info #b)
-
-    def reset(self):
-        obs, info = self.env.reset()
-        obs_dis = self.discretize(obs)  #b=)
-        return obs_dis, info
+from stable_baselines3 import SAC
+from stable_baselines3.common.vec_env import VecMonitor
+from stable_baselines3.common.env_util import make_vec_env
 
 
 class UnbalancedDisk(gym.Env):
@@ -53,20 +32,15 @@ class UnbalancedDisk(gym.Env):
         self.umax = umax
         self.dt = dt #time step
  
-
         # change anything here (compilable with the exercise instructions)
         self.action_space = spaces.Box(low=-umax,high=umax,shape=tuple()) #continuous
         
-        self.action_space = spaces.Discrete(7)#7) #discrete
-        # print(self.action_space)
-        # low = [-float('inf'),-40] 
-        # high = [float('inf'),40]
-        # aangepast
-        low = [-np.pi,-40] 
-        high = [np.pi,40]
+        # self.action_space = spaces.Discrete(7)#7) #discrete
+
+        low = [-float("inf"),-40] 
+        high = [float("inf"),40]
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
-        # print(self.observation_space)
-        nvec = nvec
+        nvec = nvec 
         '''
         UnbalancedDisk
         th =            
@@ -77,27 +51,8 @@ class UnbalancedDisk(gym.Env):
                         0  = starting location
         '''
         self.reward_fun = lambda self: (
-            # Big reward for being upright
-            1000 * np.cos(self.th - np.pi)
-
-            # Reward for being upright for a long time
-            + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
+            np.exp(-((self.th % (2 * np.pi) - np.pi) ** 2) / (2 * (np.pi / 7) ** 2)) + 0.2 * (1 - np.cos(self.th)) - 0.001 * float(self.u)**2 - 0.001 * abs(self.omega)
             
-            # Reward for swing amplitude: high when |th| is large (upside)
-            + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
-            
-            # Reward fast motion near bottom to encourage energy build-up
-            + 0.5 * (1 - np.cos(self.th)) * abs(self.omega)
-            
-            # Penalize control effort
-            - 0.001 * self.u**2
-
-            # Penalize no swing angle at the bottom
-            - 0.1 * abs(self.delta_th) if abs(self.delta_th) < np.pi/2 else 0
-
-            # Pelanize large swing angle at the top
-            - 50 * abs(self.omega) if abs(self.delta_th) >= np.pi-0.1415 else 0
-
         )
         self.render_mode = render_mode
         self.viewer = None
@@ -105,7 +60,8 @@ class UnbalancedDisk(gym.Env):
         self.reset()
 
     def step(self, action):
-        self.u = [-3, -1, -0.5, 0, 0.5, 1, 3][action]
+        self.u = action
+        # self.u = [-3, -1, -0.5, 0, 0.5, 1, 3][action]
         self.u = np.clip(self.u, -self.umax, self.umax)
 
         def f(t, y):
@@ -122,11 +78,11 @@ class UnbalancedDisk(gym.Env):
         self.costh = -np.cos(th)
 
         reward = self.reward_fun(self)
-        terminated = False
-        if terminated:
-            reward += 1000.0
+        # terminated = False
+        # if terminated:
+        #     reward += 1000.0
 
-        return self.get_obs(), reward, terminated, False, [self.th, self.omega, self.delta_th]
+        return self.get_obs(), reward, False, False, {"ths": self.th, "omegas": self.omega, "delta_ths": self.delta_th}
 
          
     def reset(self,seed=None, options=None):
@@ -229,6 +185,19 @@ class UnbalancedDisk(gym.Env):
             self.isopen = False
             self.viewer = None
 
+class UnbalancedDisk_sincos(UnbalancedDisk):
+    """docstring for UnbalancedDisk_sincos"""
+    def __init__(self, umax=3., dt = 0.025):
+        super(UnbalancedDisk_sincos, self).__init__(umax=umax, dt=dt)
+        low = [-1,-1,-40.] 
+        high = [1,1,40.]
+        self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(3,))
+
+    def get_obs(self):
+        self.th_noise = self.th + np.random.normal(loc=0,scale=0.001) #do not edit
+        self.omega_noise = self.omega + np.random.normal(loc=0,scale=0.001) #do not edit
+        return np.array([np.sin(self.th_noise), np.cos(self.th_noise), self.omega_noise]) #change anything here
+
 
 
 def argmax(a):
@@ -238,39 +207,33 @@ def argmax(a):
     a = np.array(a)
     return np.random.choice(np.arange(a.shape[0],dtype=int)[a==np.max(a)])
 
+def make_env(experiment=False, render_mode=None):
+    env = UnbalancedDisk_sincos(umax=3.0, dt=0.025)
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
+    return env
 
 
 def plots_moving():
-    with open("sim_qmats.pkl", "rb") as f:
-        Qmats = pickle.load(f)
-    import time
-    env = UnbalancedDisk(dt=0.025)
-    env = Discretize_obs(env, nvec=10) 
-    Qmat = Qmats[10]
+    vec_env = make_vec_env(lambda: make_env(), n_envs=8)
+    vec_env = VecMonitor(vec_env)
 
-    obs, info = env.reset()
-    Y = [obs]
-    env.render()
-    angles = []
-    velocities = []
-    omegas = []
-    delta_ths = []
-    try:
-        for i in range(100):
-            time.sleep(1/24)
-            u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
-            obs, reward, done, truncated, info = env.step(u)
-            angles.append(info[0])
-            velocities.append(info[1])
-            omegas.append(info[1])
-            delta_ths.append(info[2])
-            Y.append(obs)
-            env.render()
-    finally:
-        env.close()
+    model = SAC.load("sac model test", env=vec_env)
+    demo_env = make_env(experiment=False, render_mode="human")
+    obs, _ = demo_env.reset()
+    angles = [0]
+    velocities = [0]
+    import time
+    for _ in range(499):  # or however long you want to run
+        action, _ = model.predict(obs, deterministic=True)
+        obs, _, terminated, truncated, info = demo_env.step(action)
+        demo_env.render()
+        angles.append(info['ths'])
+        velocities.append(info['omegas'])
+        time.sleep(1/24)  # Control rendering speed
+    demo_env.close()
     
     import numpy as np
-    timesteps = np.arange(100)
+    timesteps = np.arange(500)
     # angle vs velocity
     fig, ax = plt.subplots()
     points = np.array([angles, velocities]).T.reshape(-1, 1, 2)
@@ -302,26 +265,21 @@ def plots_moving():
     plt.xlabel("angle (rad)")
     plt.ylabel("angular velocity (rad/s)")
     plt.colorbar(sc, label="Timestep")
-    plt.title("angular velocity $\omega$ vs angle $\\theta$")
+    plt.title("angular velocity $\omega$ vs angle $\\theta$ for SAC")
     ax.axhline(y=0, color='r')
-    plt.savefig('sim angle vs velocity.png', dpi=300, bbox_inches='tight')
+    plt.savefig('SAC sim angle vs velocity.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # velocity over time
     fig, ax = plt.subplots()
-    sc = ax.scatter(timesteps, velocities, marker='x', c=timesteps, cmap = 'viridis_r')
+    plt.plot(timesteps, velocities)
     points = np.array([timesteps, velocities]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-    lc.set_array(timesteps)
-    lc.set_linewidth(1)
-    ax.add_collection(lc)
-    plt.colorbar(sc, label="Timestep")
     plt.xlabel("Time step")
     plt.ylabel("angular velocity (rad/s)")
-    plt.title("angular velocity $\omega$ over time")
-    ax.axhline(y=0, color='r')
-    plt.savefig('sim velocity over time.png', dpi=300, bbox_inches='tight')
+    plt.title("angular velocity $\omega$ over time for SAC")
+    ax.axhline(y=0, color='r', linestyle='--', linewidth = 0.8)
+
+    plt.savefig('SAC sim velocity over time.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # angle over time
@@ -338,13 +296,7 @@ def plots_moving():
     bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
     bottom_positions = bottom_multiples[1:-1] * 2*np.pi
 
-    sc = ax.scatter(timesteps, angles, marker='x', c=timesteps, cmap = 'viridis_r')
-    points = np.array([timesteps, angles]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-    lc.set_array(timesteps)
-    lc.set_linewidth(1)
-    ax.add_collection(lc)
+    plt.plot(timesteps, angles)
 
     for pos in top_positions:
         ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
@@ -354,60 +306,11 @@ def plots_moving():
         ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
         ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
 
-    plt.colorbar(sc, label="Timestep")
         
     plt.xlabel("Time step")
     plt.ylabel("angle (rad)")
-    plt.title("angle $\\theta$ over time")
-    plt.savefig('sim angle over time.png', dpi=300, bbox_inches='tight')
-    plt.show()
-
-def plots_still():
-    with open("sim_qmats.pkl", "rb") as f:
-        Qmats = pickle.load(f)
-    import time
-    env = UnbalancedDisk(dt=0.025)
-    env = Discretize_obs(env, nvec=10) 
-    Qmat = Qmats[10]
-
-    obs, info = env.reset()
-    Y = [obs]
-    env.render()
-    angles = []
-    velocities = []
-    omegas = []
-    delta_ths = []
-    try:
-        for i in range(100):
-            time.sleep(1/24)
-            u = 3
-            obs, reward, done, truncated, info = env.step(u)
-            omegas.append(info[1])
-            delta_ths.append(info[2])
-            Y.append(obs)
-            env.render()
-    finally:
-        env.close()
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 6))
-    ax1.tick_params(labelbottom=True)
-    timesteps = np.arange(100)
-    ax1.plot(timesteps, omegas, label='Velocity 1')
-    ax1.set_ylabel('omega (rad/s)')
-    ax1.set_xlabel('Time step')
-    ax1.set_title("Omega per time step for $u=0$ and $\\theta = 0$")
-    ax1.grid(True)
-    ax1.set_xlim(0, 99)
-
-    ax2.plot(timesteps, delta_ths, label='Velocity 2', color='orange')
-    ax2.set_ylabel('$\Delta \\theta$ (rad/s)')
-    ax2.set_xlabel('Time Step')
-    ax2.set_title('$\Delta \\theta$ per time step for $u=0$ and $\\theta = 0$')
-    ax2.grid(True)
-    ax2.set_xlim(0,99)
-    plt.subplots_adjust(hspace=0.4)
-    
-
-    plt.savefig('sim omega vs delta th.png', dpi=300, bbox_inches='tight')
+    plt.title("angle $\\theta$ over time for SAC")
+    plt.savefig('SAC sim angle over time.png', dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -420,4 +323,3 @@ if __name__ == '__main__':
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
     plots_moving()
-    # plots_still()

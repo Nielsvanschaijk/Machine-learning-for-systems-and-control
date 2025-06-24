@@ -53,29 +53,8 @@ class UnbalancedDisk(gym.Env):
                         0  = starting location
         '''
         self.reward_fun = lambda self: (
-            # Big reward for being upright
             np.exp(-((self.th % (2 * np.pi) - np.pi) ** 2) / (2 * (np.pi / 7) ** 2)) + 0.2 * (1 - np.cos(self.th)) - 0.001 * float(self.u)**2 - 0.001 * abs(self.omega)
-            # Big reward for being upright
-            # 1000 * np.cos(self.th - np.pi)
-
-            # # Reward for being upright for a long time
-            # + 100 * np.cos(self.th - np.pi) * (self.dt / 0.025)  # dt is the time step
             
-            # # Reward for swing amplitude: high when |th| is large (upside)
-            # + 100 * abs(np.sin(self.th / 2))  # peaks at th=±π
-            
-            # # Reward fast motion near bottom to encourage energy build-up
-            # + 0.5 * (1 - np.cos(self.th)) * abs(self.omega)
-            
-            # # Penalize control effort
-            # - 0.001 * self.u**2
-
-            # # Penalize no swing angle at the bottom
-            # - 0.1 * abs(self.delta_th) if abs(self.delta_th) < np.pi/2 else 0
-
-            # # Pelanize large swing angle at the top
-            # - 100 * abs(self.omega) if abs(self.delta_th) >= np.pi-0.1415 else 0 # was 50
-
         )
         self.render_mode = render_mode
         self.viewer = None
@@ -243,6 +222,7 @@ def make_env(experiment=False, render_mode=None):
     env = UnbalancedDisk_sincos(umax=3.0, dt=0.025)
     env = gym.wrappers.TimeLimit(env, max_episode_steps=300) 
     return env
+
 def train():
   
     vec_env = make_vec_env(lambda: make_env(), n_envs=8)
@@ -263,7 +243,7 @@ def run_simulation():
     vec_env = make_vec_env(lambda: make_env(), n_envs=8)
     vec_env = VecMonitor(vec_env)
 
-    model = SAC.load("sac model min punish", env=vec_env)
+    model = SAC.load("sac model test", env=vec_env)
     demo_env = make_env(experiment=False, render_mode="human")
     obs, _ = demo_env.reset()
 

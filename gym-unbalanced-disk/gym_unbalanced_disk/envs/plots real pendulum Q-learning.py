@@ -105,10 +105,6 @@ def plots_still():
     plt.savefig('real omega vs omega_calc.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-    # with open('real-life_delta_thetas.pkl', 'wb') as f:
-    #     pickle.dump(delta_ths, f)
-    # with open('real-life_thetas.pkl', 'wb') as f:
-    #     pickle.dump(ths, f)
     with open('real-life_omegas_plots.pkl', 'wb') as f:
         pickle.dump(omegas, f)
     with open('real-life_omega_calcs_plots.pkl', 'wb') as f:
@@ -183,25 +179,19 @@ def plots_moving():
         plt.ylabel("angular velocity (rad/s)")
         plt.colorbar(sc, label="Timestep")
         plt.title("angular velocity $\omega_{calc}$ vs angle $\\theta$")
-        ax.axhline(y=0, color='r')
+        ax.axhline(y=0, color='k', linestyle = '--', linewidth = 0.8)
         plot_save_name = 'real angle vs velocity, dt = ' + dts[i] + '.png'
         plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
         plt.show()
 
         # velocity over time
         fig, ax = plt.subplots()
-        sc = ax.scatter(timesteps, omega_calcs[i], marker='x', c=timesteps, cmap = 'viridis_r')
-        points = np.array([timesteps, omega_calcs[i]]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-        lc.set_array(timesteps)
-        lc.set_linewidth(1)
-        ax.add_collection(lc)
-        plt.colorbar(sc, label="Timestep")
+        plt.plot(timesteps, omega_calcs[i])
+
         plt.xlabel("Time step")
         plt.ylabel("angular velocity (rad/s)")
         plt.title("angular velocity $\omega_{calc}$ over time")
-        ax.axhline(y=0, color='r')
+        ax.axhline(y=0, color='r', linewidth = 0.8, linestyle = '--')
         plot_save_name = 'real velocity over time, dt = ' + dts[i] + '.png'
         plt.savefig(plot_save_name, dpi=300, bbox_inches='tight')
         plt.show()
@@ -220,13 +210,7 @@ def plots_moving():
         bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
         bottom_positions = bottom_multiples[1:-1] * 2*np.pi
 
-        sc = ax.scatter(timesteps, thetas[i], marker='x', c=timesteps, cmap = 'viridis_r')
-        points = np.array([timesteps, thetas[i]]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
-        lc.set_array(timesteps)
-        lc.set_linewidth(1)
-        ax.add_collection(lc)
+        plt.plot(timesteps, thetas[i])
 
         for pos in top_positions:
             ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
@@ -236,7 +220,7 @@ def plots_moving():
             ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
             ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
 
-        plt.colorbar(sc, label="Timestep")
+        # plt.colorbar(sc, label="Timestep")
         
         plt.xlabel("Time step")
         plt.ylabel("angle (rad)")

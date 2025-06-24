@@ -52,15 +52,20 @@ class UnbalancedDisk(gym.Env):
         self.umax = umax
         self.dt = dt #time step
  
+
         # change anything here (compilable with the exercise instructions)
         self.action_space = spaces.Box(low=-umax,high=umax,shape=tuple()) #continuous
         
         self.action_space = spaces.Discrete(7)#7) #discrete
-
+        # print(self.action_space)
+        # low = [-float('inf'),-40] 
+        # high = [float('inf'),40]
+        # aangepast
         low = [-np.pi,-40] 
         high = [np.pi,40]
         self.observation_space = spaces.Box(low=np.array(low,dtype=np.float32),high=np.array(high,dtype=np.float32),shape=(2,))
-        nvec = nvec 
+        # print(self.observation_space)
+        nvec = nvec
         '''
         UnbalancedDisk
         th =            
@@ -234,126 +239,164 @@ def argmax(a):
 
 
 
-def Qlearn(env, nsteps=5000, callbackfeq=100, alpha=0.05,eps=0.9995, gamma=0.9): # was alpha = 0.2 eps 0.2 gamma = 0.99
-    from collections import defaultdict
-    Qmat = defaultdict(float) #any new argument set to zero
-    env_time = env
-    # env_time = env.unwrapped
-    while not isinstance(env_time,gym.wrappers.TimeLimit):
-        env_time = env_time.env
-    ep_lengths = []
-    ep_lengths_steps = []
-    rewards = []
-    omegas = []
-    actions = []
-    thetas = []
-    delta_ths = []
-    obs, info = env.reset()
-    print('goal reached time:')
-    for z in range(nsteps):
-
-        if np.random.uniform()<eps:
-            action = env.action_space.sample()
-        else:
-            action = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
-        actions.append(action)
-        obs_new, reward, terminated, truncated, info = env.step(action)
-        rewards.append(reward)
-        thetas.append(info[0])
-        omegas.append(info[1])
-        delta_ths.append(info[2])
-        if terminated: #terminal state and not by timeout
-            #saving results:
-            print(env_time._elapsed_steps, end=' ')
-            ep_lengths.append(env_time._elapsed_steps)
-            ep_lengths_steps.append(z)
-            
-            #updating Qmat:
-            A = reward - Qmat[obs,action] # adventage or TD
-            Qmat[obs,action] += alpha*A
-            obs, info = env.reset()
-        else: #not terminal
-            A = reward + gamma*max(Qmat[obs_new, action_next] for action_next in range(env.action_space.n)) - Qmat[obs,action]
-            Qmat[obs,action] += alpha*A
-            obs = obs_new
-            
-            if truncated: #terminal by truncation with timeout
-                #saving results:
-                ep_lengths.append(env_time._elapsed_steps)
-                ep_lengths_steps.append(z)
-                print('out', end=' ')
-                
-                #reset:
-                obs, info = env.reset()
-        eps = max(0.05, eps * 0.999) 
-    print()
-    
-    return Qmat, np.array(ep_lengths_steps), np.array(ep_lengths), [rewards, omegas, actions, thetas, delta_ths]
-
-def roll_mean(ar,start=2000,N=50):
-    s = 1-1/N
-    k = start
-    out = np.zeros(ar.shape)
-    for i,a in enumerate(ar):
-        k = s*k + (1-s)*a
-        out[i] = k
-    return out
-
-def train():
-    Qmats = {}
-    for nvec in [10]:
-        max_episode_steps = 300
-        env = UnbalancedDisk(nvec=nvec, dt=0.025)
-        env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) 
-        env = Discretize_obs(env, nvec=nvec)
-
-        print('nvec =', nvec)
-        Qmat, ep_lengths_steps, ep_lengths, info = Qlearn(env, nsteps=5_000_000, callbackfeq=5000)
-        rewards, omegas, actions, thetas, delta_ths = info
-
-        plt.plot(ep_lengths_steps, roll_mean(ep_lengths, start=max_episode_steps), label=str(nvec))
-        Qmats[nvec] = Qmat
-
-    plt.legend()
-    plt.show()
-    plt.plot(rewards)
-    plt.plot(thetas)
-    plt.show()
-
-    with open("sim_3mil_qmats.pkl", "wb") as f:
-        pickle.dump(Qmats, f)
-
-def run_simulation():
-    with open("real_sim_qmats.pkl", "rb") as f:
+def plots_moving():
+    with open("sim_qmats.pkl", "rb") as f:
         Qmats = pickle.load(f)
     import time
     env = UnbalancedDisk(dt=0.025)
-    env = Discretize_obs(env, nvec=10)
+    env = Discretize_obs(env, nvec=10) 
     Qmat = Qmats[10]
 
     obs, info = env.reset()
     Y = [obs]
     env.render()
+    angles = []
+    velocities = []
+    omegas = []
+    delta_ths = []
     try:
-        for i in range(100):
+        for i in range(500):
             time.sleep(1/24)
             u = argmax([Qmat[obs,i] for i in range(env.action_space.n)])
             obs, reward, done, truncated, info = env.step(u)
+            angles.append(info[0])
+            velocities.append(info[1])
+            omegas.append(info[1])
+            delta_ths.append(info[2])
             Y.append(obs)
             env.render()
     finally:
         env.close()
     
     import numpy as np
-    Y = np.array(Y)
-    undiscretizedY = []
-    for item in Y[:,0]:
-        undiscretizedItem = -np.pi + (item + 0.5) * 2*np.pi / 100
-        undiscretizedY.append(undiscretizedItem)
-    undiscretizedY = np.array(undiscretizedY)
-    plt.plot(undiscretizedY)
-    plt.title(f'max(Y[:,0])={max(undiscretizedY)}')
+    timesteps = np.arange(500)
+    # angle vs velocity
+    fig, ax = plt.subplots()
+    points = np.array([angles, velocities]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    from matplotlib.collections import LineCollection
+    lc = LineCollection(segments, cmap='viridis_r', norm=plt.Normalize(timesteps.min(), timesteps.max()))
+    lc.set_array(timesteps)
+    lc.set_linewidth(2)
+
+    xmin = min(angles)
+    xmax = max(angles)
+    lower_top = int(np.ceil((xmin - np.pi) / (2 * np.pi)))
+    upper_top = int(np.floor((xmax - np.pi) / (2 * np.pi)))
+    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+
+    bottom_multiples = np.arange(np.floor(xmin / (2 * np.pi)), np.ceil(xmax / (2*np.pi)) + 1)
+    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+
+    ax.add_collection(lc)
+    sc = ax.scatter(angles, velocities, c=timesteps, cmap='viridis_r', marker='x')
+    for pos in top_positions:
+        ax.axvline(x=pos, color='red', linestyle='--', linewidth=0.8)
+        ax.text(pos + 0.1, ax.get_ylim()[0], 'top', color='red', fontsize=9, va='bottom', ha='left')
+
+    for pos in bottom_positions:
+        ax.axvline(x=pos, color='blue', linestyle='--', linewidth=0.8)
+        ax.text(pos + 0.1, ax.get_ylim()[0], 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+
+    plt.xlabel("angle (rad)")
+    plt.ylabel("angular velocity (rad/s)")
+    plt.colorbar(sc, label="Timestep")
+    plt.title("angular velocity $\omega$ vs angle $\\theta$")
+    ax.axhline(y=0, color='r')
+    plt.savefig('sim angle vs velocity.png', dpi=300, bbox_inches='tight')
     plt.show()
+
+    # velocity over time
+    fig, ax = plt.subplots()
+    plt.plot(timesteps, velocities)
+    points = np.array([timesteps, velocities]).T.reshape(-1, 1, 2)
+    plt.xlabel("Time step")
+    plt.ylabel("angular velocity (rad/s)")
+    plt.title("angular velocity $\omega$ over time")
+    ax.axhline(y=0, color='r')
+    plt.savefig('sim velocity over time.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+    # angle over time
+    fig, ax = plt.subplots()
+    ymin = min(angles)
+    ymax = max(angles)
+    # Compute lower and upper bounds for odd multiples of π
+    lower_top = int(np.ceil((ymin - np.pi) / (2 * np.pi)))
+    upper_top = int(np.floor((ymax - np.pi) / (2 * np.pi)))
+
+    # Generate odd multiples of π within the range
+    top_positions = (2 * np.arange(lower_top, upper_top + 1) + 1) * np.pi
+
+    bottom_multiples = np.arange(np.floor(ymin / (2 * np.pi)), np.ceil(ymax / (2*np.pi)) + 1)
+    bottom_positions = bottom_multiples[1:-1] * 2*np.pi
+
+    plt.plot(timesteps, angles)
+
+    for pos in top_positions:
+        ax.axhline(y=pos, color='red', linestyle='--', linewidth=0.8)
+        ax.text(0, pos, 'top', color='red', fontsize=9, va='bottom', ha='left')
+
+    for pos in bottom_positions:
+        ax.axhline(y=pos, color='blue', linestyle='--', linewidth=0.8)
+        ax.text(0, pos, 'bottom', color='blue', fontsize=9, va='bottom', ha='left')
+
+        
+    plt.xlabel("Time step")
+    plt.ylabel("angle (rad)")
+    plt.title("angle $\\theta$ over time")
+    plt.savefig('sim angle over time.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+def plots_still():
+    with open("sim_qmats.pkl", "rb") as f:
+        Qmats = pickle.load(f)
+    import time
+    env = UnbalancedDisk(dt=0.025)
+    env = Discretize_obs(env, nvec=10) 
+    Qmat = Qmats[10]
+
+    obs, info = env.reset()
+    Y = [obs]
+    env.render()
+    angles = []
+    velocities = []
+    omegas = []
+    delta_ths = []
+    try:
+        for i in range(100):
+            time.sleep(1/24)
+            u = 3
+            obs, reward, done, truncated, info = env.step(u)
+            omegas.append(info[1])
+            delta_ths.append(info[2])
+            Y.append(obs)
+            env.render()
+    finally:
+        env.close()
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 6))
+    ax1.tick_params(labelbottom=True)
+    timesteps = np.arange(100)
+    ax1.plot(timesteps, omegas, label='Velocity 1')
+    ax1.set_ylabel('omega (rad/s)')
+    ax1.set_xlabel('Time step')
+    ax1.set_title("Omega per time step for $u=0$ and $\\theta = 0$")
+    ax1.grid(True)
+    ax1.set_xlim(0, 99)
+
+    ax2.plot(timesteps, delta_ths, label='Velocity 2', color='orange')
+    ax2.set_ylabel('$\Delta \\theta$ (rad/s)')
+    ax2.set_xlabel('Time Step')
+    ax2.set_title('$\Delta \\theta$ per time step for $u=0$ and $\\theta = 0$')
+    ax2.grid(True)
+    ax2.set_xlim(0,99)
+    plt.subplots_adjust(hspace=0.4)
+    
+
+    plt.savefig('sim omega vs delta th.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 
 if __name__ == '__main__':
     import argparse
@@ -362,5 +405,5 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the model and save Q-table')
     parser.add_argument('--simulate', action='store_true', help='Run simulation using saved Q-table')
     args = parser.parse_args()
-    # train()
-    run_simulation()
+    plots_moving()
+    # plots_still()
